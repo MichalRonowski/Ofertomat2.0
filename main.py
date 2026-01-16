@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ofertomat 2.0 - Aplikacja do zarządzania ofertami handlowymi
 Interfejs GUI w CustomTkinter
 """
@@ -6,6 +6,7 @@ Interfejs GUI w CustomTkinter
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
 import os
+import threading
 from typing import List, Dict, Optional
 from datetime import datetime
 
@@ -35,8 +36,6 @@ class App(ctk.CTk):
         ctk.set_default_color_theme("blue")
         
         # Zmienne stanu
-        self.current_products = []
-        self.filtered_products = []  # Produkty po filtrowaniu
         self.selected_items = []
         self.search_var = ctk.StringVar()
         self.search_var.trace('w', self.on_search_change)
@@ -45,6 +44,7 @@ class App(ctk.CTk):
         self.current_page = 0
         self.items_per_page = 100
         self.total_pages = 0
+        self.total_products = 0  # Całkowita liczba produktów w bazie
         
         # Budowanie interfejsu
         self.setup_ui()
@@ -377,13 +377,6 @@ class App(ctk.CTk):
         """Ładuje produkty z bazy danych i wyświetla w tabeli"""
         
         try:
-            # Pobierz produkty z bazy
-            self.current_products = self.db.get_products()
-            self.filtered_products = self.current_products
-            
-            # Zaktualizuj licznik
-            self.info_label.configure(text=f"Produkty: {len(self.current_products)}")
-            
             # Reset paginacji i wyświetl pierwszą stronę
             self.current_page = 0
             self.update_pagination()
@@ -392,31 +385,45 @@ class App(ctk.CTk):
             messagebox.showerror("Błąd", f"Nie można załadować produktów:\n{str(e)}")
     
     def update_pagination(self):
-        """Aktualizuje wyświetlanie z paginacją"""
-        # Oblicz liczbę stron
-        self.total_pages = max(1, (len(self.filtered_products) + self.items_per_page - 1) // self.items_per_page)
-        
-        # Upewnij się że current_page jest w zakresie
-        if self.current_page >= self.total_pages:
-            self.current_page = self.total_pages - 1
-        if self.current_page < 0:
-            self.current_page = 0
-        
-        # Aktualizuj label
-        self.page_info_label.configure(
-            text=f"Strona {self.current_page + 1} z {self.total_pages} (wyświetlane: {min(self.items_per_page, len(self.filtered_products) - self.current_page * self.items_per_page)} z {len(self.filtered_products)})"
-        )
-        
-        # Aktualizuj stan przycisków
-        self.prev_btn.configure(state="normal" if self.current_page > 0 else "disabled")
-        self.next_btn.configure(state="normal" if self.current_page < self.total_pages - 1 else "disabled")
-        
-        # Wyświetl produkty dla bieżącej strony
-        start_idx = self.current_page * self.items_per_page
-        end_idx = start_idx + self.items_per_page
-        page_products = self.filtered_products[start_idx:end_idx]
-        
-        self.display_products(page_products, start_idx)
+        """Aktualizuje wyświetlanie z paginacją - pobiera dane bezpośrednio z bazy"""
+        try:
+            # Pobierz dane dla bieżącej strony z bazy danych
+            search_query = self.search_var.get().strip()
+            page_products, total_products = self.db.get_products_paginated(
+                page=self.current_page + 1,  # get_products_paginated używa numeracji od 1
+                page_size=self.items_per_page,
+                search_query=search_query
+            )
+            
+            self.total_products = total_products
+            
+            # Oblicz liczbę stron
+            self.total_pages = max(1, (total_products + self.items_per_page - 1) // self.items_per_page)
+            
+            # Upewnij się że current_page jest w zakresie
+            if self.current_page >= self.total_pages:
+                self.current_page = self.total_pages - 1
+            if self.current_page < 0:
+                self.current_page = 0
+            
+            # Zaktualizuj licznik produktów
+            self.info_label.configure(text=f"Produkty: {total_products}")
+            
+            # Aktualizuj label paginacji
+            self.page_info_label.configure(
+                text=f"Strona {self.current_page + 1} z {self.total_pages} (wyświetlane: {len(page_products)} z {total_products})"
+            )
+            
+            # Aktualizuj stan przycisków
+            self.prev_btn.configure(state="normal" if self.current_page > 0 else "disabled")
+            self.next_btn.configure(state="normal" if self.current_page < self.total_pages - 1 else "disabled")
+            
+            # Wyświetl produkty dla bieżącej strony
+            start_idx = self.current_page * self.items_per_page
+            self.display_products(page_products, start_idx)
+            
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie można załadować danych:\n{str(e)}")
     
     def previous_page(self):
         """Przechodzi do poprzedniej strony"""
@@ -995,22 +1002,8 @@ class App(ctk.CTk):
                 messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
     
     def on_search_change(self, *args):
-        """Obsługuje zmianę tekstu w polu wyszukiwania"""
-        
-        search_text = self.search_var.get().lower().strip()
-        
-        if not search_text:
-            # Pokaż wszystkie produkty
-            self.filtered_products = self.current_products
-        else:
-            # Filtruj produkty
-            self.filtered_products = [
-                p for p in self.current_products
-                if search_text in str(p.get('name', '')).lower() or 
-                   search_text in str(p.get('category_name', '')).lower()
-            ]
-        
-        # Reset do pierwszej strony i aktualizuj
+        """Obsługuje zmianę tekstu w polu wyszukiwania - odświeża przez SQL"""
+        # Reset do pierwszej strony i aktualizuj przez bazę danych
         self.current_page = 0
         self.update_pagination()
     
@@ -1108,7 +1101,7 @@ class App(ctk.CTk):
                 messagebox.showerror("Błąd", "Nie udało się zapisać szablonu.")
         
         def generate_pdf_from_creator():
-            """Generuje PDF z kreatora"""
+            """Generuje PDF z kreatora w osobnym wątku"""
             title = offer_title_var.get().strip() or "Oferta handlowa"
             
             if not selected_offer_items:
@@ -1127,30 +1120,51 @@ class App(ctk.CTk):
             if not save_path:
                 return
             
-            try:
-                business_card = self.db.get_business_card()
-                cat_order = {cat: idx for idx, cat in enumerate(category_order_list)}
-                
-                offer_data = {
-                    'title': title,
-                    'date': datetime.now().strftime('%d.%m.%Y'),
-                    'items': selected_offer_items,
-                    'business_card': business_card,
-                    'category_order': cat_order
-                }
-                
-                success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
-                
-                if success:
-                    # Zapytaj czy zapisać jako szablon
-                    if messagebox.askyesno("Zapisać szablon?", "PDF wygenerowano!\n\nCzy zapisać tę ofertę jako szablon do bazy?"):
-                        save_as_template()
-                    messagebox.showinfo("Sukces", f"PDF wygenerowano:\n{save_path}")
-                    creator.destroy()
-                else:
-                    messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
-            except Exception as e:
-                messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
+            # Zmień kursor na "wait" przed rozpoczęciem
+            creator.config(cursor="wait")
+            creator.update()
+            
+            def pdf_generation_task():
+                """Zadanie generowania PDF wykonywane w tle"""
+                try:
+                    business_card = self.db.get_business_card()
+                    cat_order = {cat: idx for idx, cat in enumerate(category_order_list)}
+                    
+                    offer_data = {
+                        'title': title,
+                        'date': datetime.now().strftime('%d.%m.%Y'),
+                        'items': selected_offer_items,
+                        'business_card': business_card,
+                        'category_order': cat_order
+                    }
+                    
+                    success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
+                    
+                    # Przywróć kursor i pokaż wynik w głównym wątku
+                    def show_result():
+                        creator.config(cursor="")
+                        if success:
+                            # Zapytaj czy zapisać jako szablon
+                            if messagebox.askyesno("Zapisać szablon?", "PDF wygenerowano!\n\nCzy zapisać tę ofertę jako szablon do bazy?"):
+                                save_as_template()
+                            messagebox.showinfo("Sukces", f"PDF wygenerowano:\n{save_path}")
+                            creator.destroy()
+                        else:
+                            messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
+                    
+                    self.after(0, show_result)
+                    
+                except Exception as e:
+                    # Obsługa błędów w głównym wątku
+                    def show_error():
+                        creator.config(cursor="")
+                        messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
+                    
+                    self.after(0, show_error)
+            
+            # Uruchom wątek generowania PDF
+            thread = threading.Thread(target=pdf_generation_task, daemon=True)
+            thread.start()
         
         btn_save_template = ctk.CTkButton(
             actions_frame,
@@ -1601,8 +1615,9 @@ class App(ctk.CTk):
                     continue
                 
                 # Nagłówek kategorii
-                cat_header = ctk.CTkFrame(offer_items_scroll, fg_color="#C8102E")
+                cat_header = ctk.CTkFrame(offer_items_scroll, fg_color="#C8102E", height=40)
                 cat_header.pack(fill="x", pady=(10, 5), padx=5)
+                cat_header.pack_propagate(False)  # Wymuś stały rozmiar
                 
                 ctk.CTkLabel(
                     cat_header,
@@ -1939,40 +1954,72 @@ class App(ctk.CTk):
             
             # Przycisk importu
             def do_import():
+                """Importuje dane w osobnym wątku"""
                 selected_category = category_var.get()
                 category_id = next(
                     (cat['id'] for cat in categories if cat['name'] == selected_category),
                     None
                 )
                 
-                try:
-                    # Import danych
-                    products = self.importer.import_from_file(file_path, category_id)
-                    
-                    if not products:
-                        messagebox.showwarning("Uwaga", "Nie znaleziono produktów do importu.")
-                        import_dialog.destroy()
-                        return
-                    
-                    # Zapisz do bazy
-                    added, updated = self.db.import_products_batch(products)
-                    
-                    # Komunikat sukcesu
-                    messagebox.showinfo(
-                        "Sukces",
-                        f"Import zakończony!\n\n"
-                        f"Dodano: {added} produktów\n"
-                        f"Zaktualizowano: {updated} produktów"
-                    )
-                    
-                    # Odśwież tabelę
-                    self.load_products()
-                    
-                    import_dialog.destroy()
-                    
-                except Exception as e:
-                    messagebox.showerror("Błąd importu", f"Wystąpił błąd:\n{str(e)}")
-                    import_dialog.destroy()
+                # Zmień kursor na "wait" przed rozpoczęciem
+                import_dialog.config(cursor="wait")
+                self.config(cursor="wait")
+                import_dialog.update()
+                self.update()
+                
+                def import_task():
+                    """Zadanie importu wykonywane w tle"""
+                    try:
+                        # Import danych (parsowanie i zapis do bazy)
+                        products = self.importer.import_from_file(file_path, category_id)
+                        
+                        if not products:
+                            # Przywróć kursor i pokaż ostrzeżenie w głównym wątku
+                            def show_warning():
+                                import_dialog.config(cursor="")
+                                self.config(cursor="")
+                                messagebox.showwarning("Uwaga", "Nie znaleziono produktów do importu.")
+                                import_dialog.destroy()
+                            
+                            self.after(0, show_warning)
+                            return
+                        
+                        # Zapisz do bazy
+                        added, updated = self.db.import_products_batch(products)
+                        
+                        # Przywróć kursor i pokaż wynik w głównym wątku
+                        def show_success():
+                            import_dialog.config(cursor="")
+                            self.config(cursor="")
+                            
+                            # Komunikat sukcesu
+                            messagebox.showinfo(
+                                "Sukces",
+                                f"Import zakończony!\n\n"
+                                f"Dodano: {added} produktów\n"
+                                f"Zaktualizowano: {updated} produktów"
+                            )
+                            
+                            # Odśwież tabelę
+                            self.load_products()
+                            
+                            import_dialog.destroy()
+                        
+                        self.after(0, show_success)
+                        
+                    except Exception as e:
+                        # Obsługa błędów w głównym wątku
+                        def show_error():
+                            import_dialog.config(cursor="")
+                            self.config(cursor="")
+                            messagebox.showerror("Błąd importu", f"Wystąpił błąd:\n{str(e)}")
+                            import_dialog.destroy()
+                        
+                        self.after(0, show_error)
+                
+                # Uruchom wątek importu
+                thread = threading.Thread(target=import_task, daemon=True)
+                thread.start()
             
             btn_import = ctk.CTkButton(
                 import_dialog,
