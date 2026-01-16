@@ -1,0 +1,52 @@
+Kod,Nazwa,Jednostka,Cena zakupu netto,VAT
+W001,Mąka pszenna typ 500,kg,3.50,8%
+W002,Mąka orkiszowa,kg,8.20,8%
+W003,Cukier biały,kg,3.80,8%
+W004,Sól morska,kg,4.50,8%
+W005,Drożdże świeże,kg,12.00,8%
+M001,Kurczak cały,kg,12.50,8%
+M002,Pierś z kurczaka,kg,18.90,8%
+M003,Wieprzowina schab,kg,22.00,8%
+M004,Wołowina rostbef,kg,45.00,8%
+M005,Łosoś filet,kg,65.00,8%
+M006,Dorsz filet,kg,28.00,8%
+W007,Mleko 3.2%,l,2.80,8%
+W008,Śmietana 30%,l,8.50,8%
+W009,Masło extra,kg,24.00,8%
+W010,Ser żółty gouda,kg,18.50,8%
+W011,Ser mozzarella,kg,22.00,8%
+W012,Jaja świeże L,szt.,0.65,8%
+OW001,Pomidor malinowy,kg,8.50,8%
+OW002,Ogórek zielony,kg,4.20,8%
+OW003,Papryka czerwona,kg,9.80,8%
+OW004,Cebula żółta,kg,2.10,8%
+OW005,Czosnek świeży,kg,18.00,8%
+OW006,Marchew,kg,2.80,8%
+OW007,Ziemniaki,kg,1.80,8%
+OW008,Sałata lodowa,szt.,3.50,8%
+OW009,Rukola,kg,22.00,8%
+OW010,Bazylia świeża,kg,45.00,8%
+P001,Olej rzepakowy,l,8.50,8%
+P002,Oliwa z oliwek extra virgin,l,32.00,8%
+P003,Ocet balsamiczny,l,18.50,8%
+P004,Sos sojowy,l,12.00,8%
+P005,Pasta pomidorowa,kg,6.50,8%
+P006,Musztarda dijon,kg,14.00,8%
+P007,Majonez,kg,9.50,8%
+N001,Woda mineralna niegazowana 0.5l,szt.,0.85,23%
+N002,Woda mineralna gazowana 0.5l,szt.,0.85,23%
+N003,Sok pomarańczowy 100%,l,8.50,8%
+N004,Coca-Cola 0.33l,szt.,2.20,23%
+N005,Kawa ziarnista arabica,kg,65.00,8%
+N006,Herbata czarna earl grey,kg,45.00,8%
+J001,Makaron spaghetti,kg,5.50,8%
+J002,Makaron penne,kg,5.50,8%
+J003,Ryż basmati,kg,12.00,8%
+J004,Kasza gryczana,kg,6.50,8%
+D001,Lody waniliowe,l,18.00,8%
+D002,Sernik tradycyjny,szt.,28.00,8%
+D003,Tiramisu,szt.,32.00,8%
+A001,Papiery śniadaniowe białe,op.,12.50,23%
+A002,Serwetki papierowe 33x33,op.,8.90,23%
+A003,Rękawice nitrylowe L,op.,45.00,23%
+A004,Folia stretch 30cm,rolka,18.00,23%
