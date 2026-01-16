@@ -120,16 +120,16 @@ class App(ctk.CTk):
         separator2 = ctk.CTkFrame(self.left_frame, height=2, fg_color="gray30")
         separator2.pack(fill="x", padx=20, pady=20)
         
-        # Przycisk: Generuj Ofertę PDF
+        # Przycisk: Generator Ofert
         self.btn_generate_pdf = ctk.CTkButton(
             self.left_frame,
-            text="📄 Generuj Ofertę PDF",
+            text="📄 Generator Ofert",
             font=ctk.CTkFont(size=14, weight="bold"),
             height=45,
             corner_radius=8,
             fg_color=("#C8102E", "#A00E26"),
             hover_color=("#B00D24", "#8A0B1E"),
-            command=self.generate_offer_pdf
+            command=self.open_offer_creator
         )
         self.btn_generate_pdf.pack(pady=10, padx=20, fill="x")
         
@@ -226,7 +226,7 @@ class App(ctk.CTk):
         self.search_entry = ctk.CTkEntry(
             search_frame,
             textvariable=self.search_var,
-            placeholder_text="Wpisz nazwę lub kod produktu...",
+            placeholder_text="Wpisz nazwę produktu...",
             height=35,
             font=ctk.CTkFont(size=13)
         )
@@ -267,8 +267,15 @@ class App(ctk.CTk):
             self.table_scroll,
             fg_color="transparent"
         )
-        self.table_content_frame.grid(row=1, column=0, sticky="ew", padx=5)
-        self.table_content_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        self.table_content_frame.grid(row=1, column=0, sticky="ew", padx=0)
+        
+        # Ustawienie stałych szerokości kolumn (takich samych jak w nagłówku)
+        self.table_content_frame.grid_columnconfigure(0, minsize=60, weight=0)   # Checkbox
+        self.table_content_frame.grid_columnconfigure(1, minsize=350, weight=0)  # Nazwa
+        self.table_content_frame.grid_columnconfigure(2, minsize=100, weight=0)  # Jednostka
+        self.table_content_frame.grid_columnconfigure(3, minsize=120, weight=0)  # Cena netto
+        self.table_content_frame.grid_columnconfigure(4, minsize=80, weight=0)   # VAT
+        self.table_content_frame.grid_columnconfigure(5, minsize=180, weight=0)  # Kategoria
     
     def create_table_header(self):
         """Tworzy nagłówek tabeli produktów"""
@@ -278,21 +285,30 @@ class App(ctk.CTk):
             fg_color="#C8102E",
             corner_radius=5
         )
-        header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 10))
-        header_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=(5, 10))
         
-        headers = ["☑", "Kod", "Nazwa", "Jednostka", "Cena netto", "VAT %", "Kategoria"]
-        widths = [50, 100, 300, 80, 100, 70, 150]
+        # Ustawienie stałych szerokości kolumn
+        header_frame.grid_columnconfigure(0, minsize=60, weight=0)   # Checkbox
+        header_frame.grid_columnconfigure(1, minsize=350, weight=0)  # Nazwa
+        header_frame.grid_columnconfigure(2, minsize=100, weight=0)  # Jednostka
+        header_frame.grid_columnconfigure(3, minsize=120, weight=0)  # Cena netto
+        header_frame.grid_columnconfigure(4, minsize=80, weight=0)   # VAT
+        header_frame.grid_columnconfigure(5, minsize=180, weight=0)  # Kategoria
         
-        for i, (header, width) in enumerate(zip(headers, widths)):
+        headers = ["☑", "Nazwa", "Jednostka", "Cena netto", "VAT %", "Kategoria"]
+        
+        for i, header in enumerate(headers):
             label = ctk.CTkLabel(
                 header_frame,
                 text=header,
                 font=ctk.CTkFont(size=13, weight="bold"),
-                text_color="white",
-                width=width
+                text_color="white"
             )
-            label.grid(row=0, column=i, padx=5, pady=10, sticky="w")
+            if i == 0:
+                # Checkbox - wyśrodkowany
+                label.grid(row=0, column=i, padx=10, pady=10, sticky="w")
+            else:
+                label.grid(row=0, column=i, padx=5, pady=10, sticky="w")
     
     def load_products(self):
         """Ładuje produkty z bazy danych i wyświetla w tabeli"""
@@ -333,8 +349,15 @@ class App(ctk.CTk):
             fg_color=bg_color,
             corner_radius=3
         )
-        row_frame.grid(row=idx, column=0, sticky="ew", pady=2, padx=2)
-        row_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
+        row_frame.grid(row=idx, column=0, sticky="ew", pady=2, padx=0)
+        
+        # Ustawienie stałych szerokości kolumn (takich samych jak w nagłówku)
+        row_frame.grid_columnconfigure(0, minsize=60, weight=0)   # Checkbox
+        row_frame.grid_columnconfigure(1, minsize=350, weight=1)  # Nazwa
+        row_frame.grid_columnconfigure(2, minsize=100, weight=0)  # Jednostka
+        row_frame.grid_columnconfigure(3, minsize=120, weight=0)  # Cena netto
+        row_frame.grid_columnconfigure(4, minsize=80, weight=0)   # VAT
+        row_frame.grid_columnconfigure(5, minsize=180, weight=0)  # Kategoria
         
         # Checkbox do zaznaczania
         checkbox_var = ctk.BooleanVar()
@@ -345,27 +368,25 @@ class App(ctk.CTk):
             width=30,
             command=lambda: self.on_product_select(product, checkbox_var.get())
         )
-        checkbox.grid(row=0, column=0, padx=10, pady=8)
+        checkbox.grid(row=0, column=0, padx=10, pady=8, sticky="w")
         
         # Kolumny danych
         columns = [
-            ("code", 100, product.get('code', 'N/A')),
-            ("name", 300, product.get('name', 'N/A')),
-            ("unit", 80, product.get('unit', 'szt.')),
-            ("price", 100, f"{product.get('purchase_price_net', 0):.2f} zł"),
-            ("vat", 70, f"{product.get('vat_rate', 23):.0f}%"),
-            ("category", 150, product.get('category_name', 'Bez kategorii'))
+            ("name", product.get('name', 'N/A')),
+            ("unit", product.get('unit', 'szt.')),
+            ("price", f"{product.get('purchase_price_net', 0):.2f} zł"),
+            ("vat", f"{product.get('vat_rate', 23):.0f}%"),
+            ("category", product.get('category_name', 'Bez kategorii'))
         ]
         
-        for col_idx, (key, width, value) in enumerate(columns, start=1):
+        for col_idx, (key, value) in enumerate(columns, start=1):
             label = ctk.CTkLabel(
                 row_frame,
                 text=str(value),
                 font=ctk.CTkFont(size=12),
-                width=width,
                 anchor="w"
             )
-            label.grid(row=0, column=col_idx, padx=5, pady=8, sticky="w")
+            label.grid(row=0, column=col_idx, padx=5, pady=8, sticky="ew")
     
     def on_product_select(self, product: Dict, is_selected: bool):
         """Obsługuje zaznaczanie/odznaczanie produktu"""
@@ -389,8 +410,7 @@ class App(ctk.CTk):
             # Filtruj produkty
             filtered = [
                 p for p in self.current_products
-                if search_text in str(p.get('name', '')).lower() or
-                   search_text in str(p.get('code', '')).lower()
+                if search_text in str(p.get('name', '')).lower()
             ]
             self.display_products(filtered)
     
@@ -399,6 +419,616 @@ class App(ctk.CTk):
         self.search_var.set("")
     
     # === FUNKCJE AKCJI (PRZYCISKI) ===
+    
+    def open_offer_creator(self, existing_offer_id=None):
+        """Otwiera kreator ofert - główne okno do tworzenia/edycji ofert"""
+        
+        # Duże okno kreatora
+        creator = ctk.CTkToplevel(self)
+        creator.title("Generator Ofert" if not existing_offer_id else "Edycja Oferty")
+        creator.geometry("1400x800")
+        creator.transient(self)
+        creator.grab_set()
+        
+        # Centrowanie
+        creator.update_idletasks()
+        x = (creator.winfo_screenwidth() // 2) - (1400 // 2)
+        y = (creator.winfo_screenheight() // 2) - (800 // 2)
+        creator.geometry(f"1400x800+{x}+{y}")
+        
+        # Zmienne stanu
+        offer_title_var = ctk.StringVar(value="Oferta handlowa")
+        selected_offer_items = []  # Lista wybranych produktów do oferty
+        category_order_list = []  # Kolejność kategorii
+        
+        # === GÓRNY PANEL: Tytuł i przyciski akcji ===
+        top_frame = ctk.CTkFrame(creator, fg_color="gray20", height=80)
+        top_frame.pack(fill="x", padx=10, pady=10)
+        top_frame.pack_propagate(False)
+        
+        # Lewy panel górny - tytuł oferty
+        title_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
+        title_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        
+        ctk.CTkLabel(
+            title_frame,
+            text="Tytuł oferty:",
+            font=ctk.CTkFont(size=13, weight="bold")
+        ).pack(side="left", padx=(0, 10))
+        
+        title_entry = ctk.CTkEntry(
+            title_frame,
+            textvariable=offer_title_var,
+            height=40,
+            font=ctk.CTkFont(size=14),
+            placeholder_text="Wprowadź tytuł oferty..."
+        )
+        title_entry.pack(side="left", fill="x", expand=True)
+        
+        # Prawy panel górny - przyciski akcji
+        actions_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
+        actions_frame.pack(side="right", padx=10, pady=10)
+        
+        def save_as_template():
+            """Zapisuje ofertę jako szablon bez generowania PDF"""
+            title = offer_title_var.get().strip() or "Oferta handlowa"
+            
+            if not selected_offer_items:
+                messagebox.showwarning("Uwaga", "Dodaj produkty do oferty!")
+                return
+            
+            # Przygotuj dane
+            items_to_save = []
+            cat_order = {cat: idx for idx, cat in enumerate(category_order_list)}
+            
+            for item in selected_offer_items:
+                items_to_save.append({
+                    'product_id': item.get('id'),
+                    'name': item['name'],
+                    'category_name': item.get('category_name', 'Bez kategorii'),
+                    'unit': item.get('unit', 'szt.'),
+                    'purchase_price_net': item.get('purchase_price_net', 0),
+                    'vat_rate': item.get('vat_rate', 23),
+                    'margin': item.get('margin', item.get('default_margin', 30.0)),
+                    'quantity': 1.0
+                })
+            
+            # Zapisz
+            if existing_offer_id:
+                success = self.db.update_offer(existing_offer_id, title, items_to_save, cat_order)
+                msg = "Szablon został zaktualizowany!"
+            else:
+                offer_id = self.db.save_offer(title, items_to_save, cat_order)
+                success = offer_id > 0
+                msg = "Szablon został zapisany!"
+            
+            if success:
+                messagebox.showinfo("Sukces", msg)
+            else:
+                messagebox.showerror("Błąd", "Nie udało się zapisać szablonu.")
+        
+        def generate_pdf_from_creator():
+            """Generuje PDF z kreatora"""
+            title = offer_title_var.get().strip() or "Oferta handlowa"
+            
+            if not selected_offer_items:
+                messagebox.showwarning("Uwaga", "Dodaj produkty do oferty!")
+                return
+            
+            # Wybór lokalizacji zapisu
+            filename = f"{title}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            save_path = filedialog.asksaveasfilename(
+                title="Zapisz ofertę jako",
+                defaultextension=".pdf",
+                initialfile=filename,
+                filetypes=[("Plik PDF", "*.pdf")]
+            )
+            
+            if not save_path:
+                return
+            
+            try:
+                business_card = self.db.get_business_card()
+                cat_order = {cat: idx for idx, cat in enumerate(category_order_list)}
+                
+                offer_data = {
+                    'title': title,
+                    'date': datetime.now().strftime('%d.%m.%Y'),
+                    'items': selected_offer_items,
+                    'business_card': business_card,
+                    'category_order': cat_order
+                }
+                
+                success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
+                
+                if success:
+                    # Zapytaj czy zapisać jako szablon
+                    if messagebox.askyesno("Zapisać szablon?", "PDF wygenerowano!\n\nCzy zapisać tę ofertę jako szablon do bazy?"):
+                        save_as_template()
+                    messagebox.showinfo("Sukces", f"PDF wygenerowano:\n{save_path}")
+                    creator.destroy()
+                else:
+                    messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
+            except Exception as e:
+                messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
+        
+        btn_save_template = ctk.CTkButton(
+            actions_frame,
+            text="💾 Zapisz Szablon",
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#3B8ED0",
+            hover_color="#2E7AB8",
+            command=save_as_template
+        )
+        btn_save_template.pack(side="left", padx=5)
+        
+        btn_generate = ctk.CTkButton(
+            actions_frame,
+            text="📄 Generuj PDF",
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#C8102E",
+            hover_color="#B00D24",
+            command=generate_pdf_from_creator
+        )
+        btn_generate.pack(side="left", padx=5)
+        
+        # === ŚRODKOWY PANEL: 3 kolumny ===
+        main_frame = ctk.CTkFrame(creator, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Konfiguracja grid dla 3 kolumn
+        main_frame.grid_columnconfigure(0, weight=1, minsize=300)  # Lewy: Kategorie
+        main_frame.grid_columnconfigure(1, weight=2, minsize=500)  # Środek: Produkty
+        main_frame.grid_columnconfigure(2, weight=2, minsize=500)  # Prawy: Wybrane
+        main_frame.grid_rowconfigure(0, weight=1)
+        
+        # === LEWY PANEL: Lista kategorii ===
+        left_panel = ctk.CTkFrame(main_frame, fg_color="gray20")
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        
+        ctk.CTkLabel(
+            left_panel,
+            text="📁 Kategorie",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(pady=15)
+        
+        categories_scroll = ctk.CTkScrollableFrame(left_panel, fg_color="gray15")
+        categories_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+        
+        selected_category_id = [None]  # Lista do przechowania referencji
+        
+        def load_categories():
+            """Ładuje kategorie do lewego panelu"""
+            for widget in categories_scroll.winfo_children():
+                widget.destroy()
+            
+            categories = self.db.get_categories()
+            
+            for cat in categories:
+                cat_btn = ctk.CTkButton(
+                    categories_scroll,
+                    text=cat['name'],
+                    height=40,
+                    font=ctk.CTkFont(size=13),
+                    fg_color="gray25",
+                    hover_color="#3B8ED0",
+                    anchor="w",
+                    command=lambda c=cat: select_category(c)
+                )
+                cat_btn.pack(fill="x", pady=2, padx=5)
+        
+        # === ŚRODKOWY PANEL: Produkty w kategorii ===
+        middle_panel = ctk.CTkFrame(main_frame, fg_color="gray20")
+        middle_panel.grid(row=0, column=1, sticky="nsew", padx=5)
+        
+        middle_title_label = ctk.CTkLabel(
+            middle_panel,
+            text="📦 Wybierz produkty",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        middle_title_label.pack(pady=15)
+        
+        products_scroll = ctk.CTkScrollableFrame(middle_panel, fg_color="gray15")
+        products_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+        
+        def select_category(category):
+            """Wyświetla produkty wybranej kategorii"""
+            selected_category_id[0] = category['id']
+            middle_title_label.configure(text=f"📦 {category['name']}")
+            
+            # Wyczyść poprzednie produkty
+            for widget in products_scroll.winfo_children():
+                widget.destroy()
+            
+            # Pobierz produkty
+            products = self.db.get_products(category['id'])
+            
+            if not products:
+                ctk.CTkLabel(
+                    products_scroll,
+                    text="Brak produktów w tej kategorii",
+                    text_color="gray"
+                ).pack(pady=20)
+                return
+            
+            # Przycisk "Dodaj całą kategorię"
+            add_all_btn = ctk.CTkButton(
+                products_scroll,
+                text=f"➕ Dodaj wszystkie produkty ({len(products)})",
+                height=45,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#C8102E",
+                hover_color="#B00D24",
+                command=lambda: add_all_products_from_category(products)
+            )
+            add_all_btn.pack(fill="x", pady=10, padx=5)
+            
+            # Lista produktów
+            for product in products:
+                product_frame = ctk.CTkFrame(products_scroll, fg_color="gray25")
+                product_frame.pack(fill="x", pady=3, padx=5)
+                
+                # Nazwa produktu
+                name_label = ctk.CTkLabel(
+                    product_frame,
+                    text=product['name'],
+                    font=ctk.CTkFont(size=12),
+                    anchor="w"
+                )
+                name_label.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+                
+                # Cena
+                price_label = ctk.CTkLabel(
+                    product_frame,
+                    text=f"{product['purchase_price_net']:.2f} zł",
+                    font=ctk.CTkFont(size=11),
+                    text_color="gray"
+                )
+                price_label.pack(side="left", padx=10)
+                
+                # Przycisk dodaj
+                add_btn = ctk.CTkButton(
+                    product_frame,
+                    text="➕",
+                    width=40,
+                    height=30,
+                    fg_color="#3B8ED0",
+                    hover_color="#2E7AB8",
+                    command=lambda p=product: add_product_to_offer(p)
+                )
+                add_btn.pack(side="right", padx=5, pady=5)
+        
+        def add_all_products_from_category(products):
+            """Dodaje wszystkie produkty z kategorii do oferty"""
+            for product in products:
+                add_product_to_offer(product)
+        
+        # === PRAWY PANEL: Wybrane produkty w ofercie ===
+        right_panel = ctk.CTkFrame(main_frame, fg_color="gray20")
+        right_panel.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
+        
+        ctk.CTkLabel(
+            right_panel,
+            text="📋 Produkty w ofercie",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(pady=15)
+        
+        offer_items_scroll = ctk.CTkScrollableFrame(right_panel, fg_color="gray15")
+        offer_items_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+        
+        def add_product_to_offer(product):
+            """Dodaje produkt do oferty (prawy panel)"""
+            # Sprawdź czy produkt już jest w ofercie
+            if any(item.get('id') == product['id'] for item in selected_offer_items):
+                messagebox.showinfo("Info", f"Produkt '{product['name']}' już jest w ofercie!")
+                return
+            
+            # Dodaj produkt
+            product_copy = product.copy()
+            product_copy['margin'] = product.get('default_margin', 30.0)
+            selected_offer_items.append(product_copy)
+            
+            # Dodaj kategorię do kolejności jeśli jeszcze nie ma
+            cat_name = product.get('category_name', 'Bez kategorii')
+            if cat_name not in category_order_list:
+                category_order_list.append(cat_name)
+            
+            refresh_offer_items()
+        
+        def remove_product_from_offer(product):
+            """Usuwa produkt z oferty"""
+            selected_offer_items.remove(product)
+            refresh_offer_items()
+        
+        def refresh_offer_items():
+            """Odświeża listę wybranych produktów"""
+            for widget in offer_items_scroll.winfo_children():
+                widget.destroy()
+            
+            if not selected_offer_items:
+                ctk.CTkLabel(
+                    offer_items_scroll,
+                    text="Brak produktów\n\nDodaj produkty z lewej strony",
+                    text_color="gray",
+                    font=ctk.CTkFont(size=13)
+                ).pack(pady=50)
+                return
+            
+            # Grupuj po kategoriach
+            items_by_category = {}
+            for item in selected_offer_items:
+                cat = item.get('category_name', 'Bez kategorii')
+                if cat not in items_by_category:
+                    items_by_category[cat] = []
+                items_by_category[cat].append(item)
+            
+            # Wyświetl według kolejności kategorii
+            for cat_name in category_order_list:
+                if cat_name not in items_by_category:
+                    continue
+                
+                # Nagłówek kategorii
+                cat_header = ctk.CTkFrame(offer_items_scroll, fg_color="#C8102E")
+                cat_header.pack(fill="x", pady=(10, 5), padx=5)
+                
+                ctk.CTkLabel(
+                    cat_header,
+                    text=cat_name,
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    text_color="white"
+                ).pack(side="left", padx=10, pady=8)
+                
+                # Przyciski kolejności kategorii
+                cat_btn_frame = ctk.CTkFrame(cat_header, fg_color="transparent")
+                cat_btn_frame.pack(side="right", padx=5)
+                
+                idx = category_order_list.index(cat_name)
+                if idx > 0:
+                    ctk.CTkButton(
+                        cat_btn_frame,
+                        text="⬆",
+                        width=30,
+                        height=25,
+                        fg_color="gray30",
+                        hover_color="gray40",
+                        command=lambda c=cat_name: move_category_up(c)
+                    ).pack(side="left", padx=2)
+                
+                if idx < len(category_order_list) - 1:
+                    ctk.CTkButton(
+                        cat_btn_frame,
+                        text="⬇",
+                        width=30,
+                        height=25,
+                        fg_color="gray30",
+                        hover_color="gray40",
+                        command=lambda c=cat_name: move_category_down(c)
+                    ).pack(side="left", padx=2)
+                
+                # Produkty w kategorii
+                for idx, item in enumerate(items_by_category[cat_name]):
+                    item_frame = ctk.CTkFrame(offer_items_scroll, fg_color="gray25")
+                    item_frame.pack(fill="x", pady=2, padx=5)
+                    
+                    # Nazwa
+                    name_label = ctk.CTkLabel(
+                        item_frame,
+                        text=item['name'],
+                        font=ctk.CTkFont(size=12),
+                        anchor="w"
+                    )
+                    name_label.pack(side="top", anchor="w", fill="x", padx=10, pady=(8, 2))
+                    
+                    # Szczegóły: cena, VAT, marża
+                    details_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
+                    details_frame.pack(side="top", fill="x", padx=10, pady=(2, 8))
+                    
+                    detail_text = f"Cena: {item['purchase_price_net']:.2f} zł | VAT: {item['vat_rate']:.0f}% | Marża: {item.get('margin', 30):.1f}%"
+                    ctk.CTkLabel(
+                        details_frame,
+                        text=detail_text,
+                        font=ctk.CTkFont(size=10),
+                        text_color="gray"
+                    ).pack(side="left")
+                    
+                    # Przyciski
+                    btn_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
+                    btn_frame.pack(side="right", padx=5, pady=5)
+                    
+                    # Przyciski kolejności produktu
+                    if idx > 0:
+                        ctk.CTkButton(
+                            btn_frame,
+                            text="⬆",
+                            width=30,
+                            height=30,
+                            fg_color="gray30",
+                            hover_color="gray40",
+                            command=lambda c=cat_name, i=item: move_product_up_in_category(c, i)
+                        ).pack(side="left", padx=2)
+                    
+                    if idx < len(items_by_category[cat_name]) - 1:
+                        ctk.CTkButton(
+                            btn_frame,
+                            text="⬇",
+                            width=30,
+                            height=30,
+                            fg_color="gray30",
+                            hover_color="gray40",
+                            command=lambda c=cat_name, i=item: move_product_down_in_category(c, i)
+                        ).pack(side="left", padx=2)
+                    
+                    # Przycisk edytuj
+                    ctk.CTkButton(
+                        btn_frame,
+                        text="✏️",
+                        width=35,
+                        height=30,
+                        fg_color="gray30",
+                        hover_color="#3B8ED0",
+                        command=lambda i=item: edit_item_in_offer(i)
+                    ).pack(side="left", padx=2)
+                    
+                    # Przycisk usuń
+                    ctk.CTkButton(
+                        btn_frame,
+                        text="🗑️",
+                        width=35,
+                        height=30,
+                        fg_color="gray30",
+                        hover_color="#C8102E",
+                        command=lambda i=item: remove_product_from_offer(i)
+                    ).pack(side="left", padx=2)
+        
+        def move_category_up(cat_name):
+            """Przesuwa kategorię w górę"""
+            idx = category_order_list.index(cat_name)
+            if idx > 0:
+                category_order_list[idx], category_order_list[idx - 1] = category_order_list[idx - 1], category_order_list[idx]
+                refresh_offer_items()
+        
+        def move_category_down(cat_name):
+            """Przesuwa kategorię w dół"""
+            idx = category_order_list.index(cat_name)
+            if idx < len(category_order_list) - 1:
+                category_order_list[idx], category_order_list[idx + 1] = category_order_list[idx + 1], category_order_list[idx]
+                refresh_offer_items()
+        
+        def move_product_up_in_category(cat_name, item):
+            """Przesuwa produkt w górę w ramach kategorii"""
+            category_items = [i for i in selected_offer_items if i['category_name'] == cat_name]
+            idx = category_items.index(item)
+            if idx > 0:
+                # Znajdź indeksy w głównej liście
+                main_idx = selected_offer_items.index(item)
+                main_idx_prev = selected_offer_items.index(category_items[idx - 1])
+                # Zamień miejscami
+                selected_offer_items[main_idx], selected_offer_items[main_idx_prev] = selected_offer_items[main_idx_prev], selected_offer_items[main_idx]
+                refresh_offer_items()
+        
+        def move_product_down_in_category(cat_name, item):
+            """Przesuwa produkt w dół w ramach kategorii"""
+            category_items = [i for i in selected_offer_items if i['category_name'] == cat_name]
+            idx = category_items.index(item)
+            if idx < len(category_items) - 1:
+                # Znajdź indeksy w głównej liście
+                main_idx = selected_offer_items.index(item)
+                main_idx_next = selected_offer_items.index(category_items[idx + 1])
+                # Zamień miejscami
+                selected_offer_items[main_idx], selected_offer_items[main_idx_next] = selected_offer_items[main_idx_next], selected_offer_items[main_idx]
+                refresh_offer_items()
+        
+        def edit_item_in_offer(item):
+            """Edytuje wartości produktu w ofercie"""
+            edit_dialog = ctk.CTkToplevel(creator)
+            edit_dialog.title("Edycja produktu w ofercie")
+            edit_dialog.geometry("450x400")
+            edit_dialog.transient(creator)
+            edit_dialog.grab_set()
+            
+            # Centrowanie
+            edit_dialog.update_idletasks()
+            x = (edit_dialog.winfo_screenwidth() // 2) - (450 // 2)
+            y = (edit_dialog.winfo_screenheight() // 2) - (400 // 2)
+            edit_dialog.geometry(f"450x400+{x}+{y}")
+            
+            ctk.CTkLabel(edit_dialog, text="Edycja produktu", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=15)
+            
+            form_frame = ctk.CTkFrame(edit_dialog, fg_color="transparent")
+            form_frame.pack(pady=10, padx=20, fill="both")
+            
+            # Nazwa
+            ctk.CTkLabel(form_frame, text="Nazwa:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            name_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
+            name_entry.insert(0, item['name'])
+            name_entry.pack(fill="x", pady=(0, 10))
+            
+            # Cena zakupu netto
+            ctk.CTkLabel(form_frame, text="Cena zakupu netto:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            price_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
+            price_entry.insert(0, str(item['purchase_price_net']))
+            price_entry.pack(fill="x", pady=(0, 10))
+            
+            # VAT
+            ctk.CTkLabel(form_frame, text="VAT (%):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            vat_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
+            vat_entry.insert(0, str(item['vat_rate']))
+            vat_entry.pack(fill="x", pady=(0, 10))
+            
+            # Marża
+            ctk.CTkLabel(form_frame, text="Marża (%):", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            margin_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
+            margin_entry.insert(0, str(item.get('margin', 30)))
+            margin_entry.pack(fill="x", pady=(0, 10))
+            
+            def save_edits():
+                try:
+                    item['name'] = name_entry.get().strip()
+                    item['purchase_price_net'] = float(price_entry.get().strip())
+                    item['vat_rate'] = float(vat_entry.get().strip())
+                    item['margin'] = float(margin_entry.get().strip())
+                    
+                    refresh_offer_items()
+                    edit_dialog.destroy()
+                    messagebox.showinfo("Sukces", "Wartości zostały zaktualizowane!")
+                except ValueError:
+                    messagebox.showerror("Błąd", "Nieprawidłowe wartości liczbowe!")
+            
+            ctk.CTkButton(
+                edit_dialog,
+                text="Zapisz zmiany",
+                height=40,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#3B8ED0",
+                hover_color="#2E7AB8",
+                command=save_edits
+            ).pack(pady=20)
+        
+        # === DOLNY PANEL: Duplikacja przycisków ===
+        bottom_frame = ctk.CTkFrame(creator, fg_color="gray20", height=70)
+        bottom_frame.pack(fill="x", padx=10, pady=(0, 10))
+        bottom_frame.pack_propagate(False)
+        
+        bottom_actions = ctk.CTkFrame(bottom_frame, fg_color="transparent")
+        bottom_actions.pack(expand=True)
+        
+        ctk.CTkButton(
+            bottom_actions,
+            text="💾 Zapisz Szablon",
+            width=180,
+            height=45,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#3B8ED0",
+            hover_color="#2E7AB8",
+            command=save_as_template
+        ).pack(side="left", padx=10)
+        
+        ctk.CTkButton(
+            bottom_actions,
+            text="📄 Generuj PDF",
+            width=180,
+            height=45,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#C8102E",
+            hover_color="#B00D24",
+            command=generate_pdf_from_creator
+        ).pack(side="left", padx=10)
+        
+        # Inicjalizacja
+        load_categories()
+        
+        # Jeśli edytujemy istniejącą ofertę
+        if existing_offer_id:
+            offer = self.db.get_offer_by_id(existing_offer_id)
+            if offer:
+                offer_title_var.set(offer['title'])
+                selected_offer_items.extend(offer['items'])
+                category_order_list.extend(offer.get('category_order', {}).keys())
+                refresh_offer_items()
     
     def load_csv_file(self):
         """Otwiera okno wyboru pliku CSV i importuje dane"""
@@ -515,72 +1145,341 @@ class App(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Błąd", f"Nie można otworzyć pliku:\n{str(e)}")
     
-    def generate_offer_pdf(self):
-        """Generuje ofertę PDF z zaznaczonych produktów"""
+    def open_categories_window(self):
+        """Otwiera okno zarządzania kategoriami"""
         
-        if not self.selected_items:
-            messagebox.showwarning(
-                "Brak zaznaczenia",
-                "Zaznacz co najmniej jeden produkt, aby wygenerować ofertę."
-            )
-            return
-        
-        # Okno dialogowe ustawień oferty
-        pdf_dialog = ctk.CTkToplevel(self)
-        pdf_dialog.title("Generowanie Oferty PDF")
-        pdf_dialog.geometry("500x400")
-        pdf_dialog.transient(self)
-        pdf_dialog.grab_set()
+        # Okno dialogowe
+        cat_window = ctk.CTkToplevel(self)
+        cat_window.title("Zarządzanie Kategoriami")
+        cat_window.geometry("700x500")
+        cat_window.transient(self)
+        cat_window.grab_set()
         
         # Centrowanie
-        pdf_dialog.update_idletasks()
-        x = (pdf_dialog.winfo_screenwidth() // 2) - (500 // 2)
-        y = (pdf_dialog.winfo_screenheight() // 2) - (400 // 2)
-        pdf_dialog.geometry(f"500x400+{x}+{y}")
+        cat_window.update_idletasks()
+        x = (cat_window.winfo_screenwidth() // 2) - (700 // 2)
+        y = (cat_window.winfo_screenheight() // 2) - (500 // 2)
+        cat_window.geometry(f"700x500+{x}+{y}")
         
         # Tytuł
-        ctk.CTkLabel(
-            pdf_dialog,
-            text="Ustawienia Oferty",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=20)
-        
-        # Nazwa oferty
-        ctk.CTkLabel(pdf_dialog, text="Tytuł oferty:", font=ctk.CTkFont(size=13)).pack(pady=(10, 5))
-        title_entry = ctk.CTkEntry(
-            pdf_dialog,
-            width=400,
-            height=35,
-            font=ctk.CTkFont(size=13),
-            placeholder_text="Np. Oferta handlowa"
+        title_label = ctk.CTkLabel(
+            cat_window,
+            text="📁 Kategorie Produktów",
+            font=ctk.CTkFont(size=20, weight="bold")
         )
-        title_entry.insert(0, "Oferta handlowa")
-        title_entry.pack(pady=5)
+        title_label.pack(pady=20)
         
-        # Wizytówka
-        business_card = self.db.get_business_card()
+        # Ramka z listą kategorii
+        list_frame = ctk.CTkFrame(cat_window)
+        list_frame.pack(pady=10, padx=20, fill="both", expand=True)
         
-        # Nazwa pliku
-        ctk.CTkLabel(pdf_dialog, text="Nazwa pliku:", font=ctk.CTkFont(size=13)).pack(pady=(15, 5))
-        filename_entry = ctk.CTkEntry(
-            pdf_dialog,
-            width=400,
-            height=35,
-            font=ctk.CTkFont(size=13),
-            placeholder_text="oferta"
-        )
-        filename_entry.insert(0, f"oferta_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-        filename_entry.pack(pady=5)
+        # Scrollable frame dla kategorii
+        scroll_frame = ctk.CTkScrollableFrame(list_frame, fg_color="gray20")
+        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
-        # Przycisk generuj
-        def do_generate():
-            title = title_entry.get().strip() or "Oferta handlowa"
-            filename = filename_entry.get().strip() or "oferta"
+        def refresh_categories():
+            """Odświeża listę kategorii"""
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
             
-            if not filename.endswith('.pdf'):
-                filename += '.pdf'
+            categories = self.db.get_categories()
+            
+            for cat in categories:
+                cat_frame = ctk.CTkFrame(scroll_frame, fg_color="gray25")
+                cat_frame.pack(fill="x", pady=5, padx=5)
+                
+                # Nazwa kategorii
+                name_label = ctk.CTkLabel(
+                    cat_frame,
+                    text=cat['name'],
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    anchor="w"
+                )
+                name_label.pack(side="left", padx=10, pady=10)
+                
+                # Marża
+                margin_label = ctk.CTkLabel(
+                    cat_frame,
+                    text=f"Marża: {cat['default_margin']:.1f}%",
+                    font=ctk.CTkFont(size=12),
+                    text_color="gray"
+                )
+                margin_label.pack(side="left", padx=10)
+                
+                # Przyciski akcji
+                btn_frame = ctk.CTkFrame(cat_frame, fg_color="transparent")
+                btn_frame.pack(side="right", padx=5)
+                
+                # Przycisk Edytuj
+                edit_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="✏️ Edytuj",
+                    width=80,
+                    height=30,
+                    fg_color="#3B8ED0",
+                    hover_color="#2E7AB8",
+                    command=lambda c=cat: edit_category(c)
+                )
+                edit_btn.pack(side="left", padx=5)
+                
+                # Przycisk Usuń
+                delete_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="🗑️ Usuń",
+                    width=80,
+                    height=30,
+                    fg_color="#C8102E",
+                    hover_color="#B00D24",
+                    command=lambda c=cat: delete_category(c)
+                )
+                delete_btn.pack(side="left", padx=5)
+        
+        def add_category():
+            """Dodaje nową kategorię"""
+            dialog = ctk.CTkToplevel(cat_window)
+            dialog.title("Nowa Kategoria")
+            dialog.geometry("400x250")
+            dialog.transient(cat_window)
+            dialog.grab_set()
+            
+            # Centrowanie
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (250 // 2)
+            dialog.geometry(f"400x250+{x}+{y}")
+            
+            ctk.CTkLabel(dialog, text="Nazwa kategorii:", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(20, 5))
+            name_entry = ctk.CTkEntry(dialog, width=300, height=35, font=ctk.CTkFont(size=13))
+            name_entry.pack(pady=5)
+            
+            ctk.CTkLabel(dialog, text="Domyślna marża (%):", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
+            margin_entry = ctk.CTkEntry(dialog, width=300, height=35, font=ctk.CTkFont(size=13))
+            margin_entry.insert(0, "30.0")
+            margin_entry.pack(pady=5)
+            
+            def save():
+                name = name_entry.get().strip()
+                try:
+                    margin = float(margin_entry.get().strip())
+                except:
+                    messagebox.showerror("Błąd", "Marża musi być liczbą!")
+                    return
+                
+                if not name:
+                    messagebox.showwarning("Uwaga", "Wprowadź nazwę kategorii!")
+                    return
+                
+                result = self.db.add_category(name, margin)
+                if result:
+                    messagebox.showinfo("Sukces", "Kategoria została dodana!")
+                    refresh_categories()
+                    dialog.destroy()
+                else:
+                    messagebox.showerror("Błąd", "Kategoria o tej nazwie już istnieje!")
+            
+            ctk.CTkButton(dialog, text="Dodaj", command=save, width=150, height=40, 
+                         fg_color="#3B8ED0", hover_color="#2E7AB8").pack(pady=20)
+        
+        def edit_category(cat):
+            """Edytuje kategorię"""
+            dialog = ctk.CTkToplevel(cat_window)
+            dialog.title("Edytuj Kategorię")
+            dialog.geometry("400x250")
+            dialog.transient(cat_window)
+            dialog.grab_set()
+            
+            # Centrowanie
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (250 // 2)
+            dialog.geometry(f"400x250+{x}+{y}")
+            
+            ctk.CTkLabel(dialog, text="Nazwa kategorii:", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(20, 5))
+            name_entry = ctk.CTkEntry(dialog, width=300, height=35, font=ctk.CTkFont(size=13))
+            name_entry.insert(0, cat['name'])
+            name_entry.pack(pady=5)
+            
+            ctk.CTkLabel(dialog, text="Domyślna marża (%):", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
+            margin_entry = ctk.CTkEntry(dialog, width=300, height=35, font=ctk.CTkFont(size=13))
+            margin_entry.insert(0, str(cat['default_margin']))
+            margin_entry.pack(pady=5)
+            
+            def save():
+                name = name_entry.get().strip()
+                try:
+                    margin = float(margin_entry.get().strip())
+                except:
+                    messagebox.showerror("Błąd", "Marża musi być liczbą!")
+                    return
+                
+                if not name:
+                    messagebox.showwarning("Uwaga", "Wprowadź nazwę kategorii!")
+                    return
+                
+                result = self.db.update_category(cat['id'], name, margin)
+                if result:
+                    messagebox.showinfo("Sukces", "Kategoria została zaktualizowana!")
+                    refresh_categories()
+                    self.load_products()  # Odśwież listę produktów
+                    dialog.destroy()
+                else:
+                    messagebox.showerror("Błąd", "Nie można zaktualizować kategorii!")
+            
+            ctk.CTkButton(dialog, text="Zapisz", command=save, width=150, height=40,
+                         fg_color="#3B8ED0", hover_color="#2E7AB8").pack(pady=20)
+        
+        def delete_category(cat):
+            """Usuwa kategorię"""
+            if messagebox.askyesno("Potwierdzenie", f"Czy na pewno usunąć kategorię '{cat['name']}'?\n\nUwaga: Można usunąć tylko kategorie bez przypisanych produktów."):
+                result = self.db.delete_category(cat['id'])
+                if result:
+                    messagebox.showinfo("Sukces", "Kategoria została usunięta!")
+                    refresh_categories()
+                    self.load_products()
+                else:
+                    messagebox.showerror("Błąd", "Nie można usunąć kategorii. Prawdopodobnie ma przypisane produkty.")
+        
+        # Przycisk dodaj kategorię
+        add_btn = ctk.CTkButton(
+            cat_window,
+            text="➕ Dodaj Kategorię",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=40,
+            fg_color="#3B8ED0",
+            hover_color="#2E7AB8",
+            command=add_category
+        )
+        add_btn.pack(pady=10)
+        
+        # Załaduj kategorie
+        refresh_categories()
+    
+    def open_saved_offers_window(self):
+        """Otwiera okno z zapisanymi ofertami"""
+        
+        # Okno dialogowe
+        offers_window = ctk.CTkToplevel(self)
+        offers_window.title("Zapisane Oferty")
+        offers_window.geometry("800x500")
+        offers_window.transient(self)
+        offers_window.grab_set()
+        
+        # Centrowanie
+        offers_window.update_idletasks()
+        x = (offers_window.winfo_screenwidth() // 2) - (800 // 2)
+        y = (offers_window.winfo_screenheight() // 2) - (500 // 2)
+        offers_window.geometry(f"800x500+{x}+{y}")
+        
+        # Tytuł
+        title_label = ctk.CTkLabel(
+            offers_window,
+            text="💾 Zapisane Oferty",
+            font=ctk.CTkFont(size=20, weight="bold")
+        )
+        title_label.pack(pady=20)
+        
+        # Ramka z listą ofert
+        list_frame = ctk.CTkFrame(offers_window)
+        list_frame.pack(pady=10, padx=20, fill="both", expand=True)
+        
+        # Scrollable frame dla ofert
+        scroll_frame = ctk.CTkScrollableFrame(list_frame, fg_color="gray20")
+        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        def refresh_offers():
+            """Odświeża listę ofert"""
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+            
+            offers = self.db.get_saved_offers()
+            
+            if not offers:
+                empty_label = ctk.CTkLabel(
+                    scroll_frame,
+                    text="Brak zapisanych ofert",
+                    font=ctk.CTkFont(size=14),
+                    text_color="gray"
+                )
+                empty_label.pack(pady=50)
+                return
+            
+            for offer in offers:
+                offer_frame = ctk.CTkFrame(scroll_frame, fg_color="gray25")
+                offer_frame.pack(fill="x", pady=5, padx=5)
+                
+                # Tytuł oferty
+                title_label = ctk.CTkLabel(
+                    offer_frame,
+                    text=offer['title'],
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    anchor="w"
+                )
+                title_label.pack(side="top", anchor="w", padx=10, pady=(10, 5))
+                
+                # Data
+                date_label = ctk.CTkLabel(
+                    offer_frame,
+                    text=f"Utworzono: {offer['created_date']} | Zmodyfikowano: {offer['modified_date']}",
+                    font=ctk.CTkFont(size=11),
+                    text_color="gray",
+                    anchor="w"
+                )
+                date_label.pack(side="top", anchor="w", padx=10, pady=(0, 10))
+                
+                # Przyciski akcji
+                btn_frame = ctk.CTkFrame(offer_frame, fg_color="transparent")
+                btn_frame.pack(side="right", padx=10, pady=5)
+                
+                # Przycisk Edytuj
+                edit_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="✏️ Edytuj",
+                    width=100,
+                    height=30,
+                    fg_color="#28A745",
+                    hover_color="#218838",
+                    command=lambda o=offer: edit_offer(o)
+                )
+                edit_btn.pack(side="left", padx=5)
+                
+                # Przycisk Generuj PDF
+                pdf_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="📄 Generuj PDF",
+                    width=120,
+                    height=30,
+                    fg_color="#3B8ED0",
+                    hover_color="#2E7AB8",
+                    command=lambda o=offer: generate_from_saved(o)
+                )
+                pdf_btn.pack(side="left", padx=5)
+                
+                # Przycisk Usuń
+                delete_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="🗑️ Usuń",
+                    width=80,
+                    height=30,
+                    fg_color="#C8102E",
+                    hover_color="#B00D24",
+                    command=lambda o=offer: delete_offer(o)
+                )
+                delete_btn.pack(side="left", padx=5)
+        
+        def edit_offer(offer):
+            """Otwiera kreator oferty w trybie edycji"""
+            offers_window.destroy()
+            self.open_offer_creator(existing_offer_id=offer['id'])
+        
+        def generate_from_saved(offer):
+            """Generuje PDF z zapisanej oferty"""
+            full_offer = self.db.get_offer_by_id(offer['id'])
+            if not full_offer:
+                messagebox.showerror("Błąd", "Nie można załadować oferty!")
+                return
             
             # Wybór lokalizacji zapisu
+            filename = f"{offer['title']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             save_path = filedialog.asksaveasfilename(
                 title="Zapisz ofertę jako",
                 defaultextension=".pdf",
@@ -593,65 +1492,38 @@ class App(ctk.CTk):
             
             try:
                 # Przygotuj dane oferty
+                business_card = self.db.get_business_card()
                 offer_data = {
-                    'title': title,
+                    'title': full_offer['title'],
                     'date': datetime.now().strftime('%d.%m.%Y'),
-                    'items': self.selected_items,
-                    'business_card': business_card
+                    'items': full_offer['items'],
+                    'business_card': business_card,
+                    'category_order': full_offer.get('category_order', {})
                 }
                 
                 # Generuj PDF
                 success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
                 
                 if success:
-                    messagebox.showinfo(
-                        "Sukces",
-                        f"Oferta PDF została wygenerowana!\n\nZapisano jako:\n{save_path}"
-                    )
-                    pdf_dialog.destroy()
+                    messagebox.showinfo("Sukces", f"Oferta PDF została wygenerowana!\n\nZapisano jako:\n{save_path}")
                 else:
                     messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
                 
             except Exception as e:
                 messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
         
-        btn_generate = ctk.CTkButton(
-            pdf_dialog,
-            text="Generuj PDF",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=45,
-            width=200,
-            fg_color="#C8102E",
-            hover_color="#B00D24",
-            command=do_generate
-        )
-        btn_generate.pack(pady=30)
+        def delete_offer(offer):
+            """Usuwa zapisaną ofertę"""
+            if messagebox.askyesno("Potwierdzenie", f"Czy na pewno usunąć ofertę '{offer['title']}'?"):
+                result = self.db.delete_offer(offer['id'])
+                if result:
+                    messagebox.showinfo("Sukces", "Oferta została usunięta!")
+                    refresh_offers()
+                else:
+                    messagebox.showerror("Błąd", "Nie można usunąć oferty!")
         
-        btn_cancel = ctk.CTkButton(
-            pdf_dialog,
-            text="Anuluj",
-            font=ctk.CTkFont(size=13),
-            height=35,
-            width=150,
-            fg_color="gray40",
-            hover_color="gray50",
-            command=pdf_dialog.destroy
-        )
-        btn_cancel.pack(pady=5)
-    
-    def open_categories_window(self):
-        """Otwiera okno zarządzania kategoriami"""
-        messagebox.showinfo(
-            "W przygotowaniu",
-            "Funkcja zarządzania kategoriami będzie dostępna w następnej wersji."
-        )
-    
-    def open_saved_offers_window(self):
-        """Otwiera okno z zapisanymi ofertami"""
-        messagebox.showinfo(
-            "W przygotowaniu",
-            "Funkcja przeglądania zapisanych ofert będzie dostępna w następnej wersji."
-        )
+        # Załaduj oferty
+        refresh_offers()
     
     def open_business_card_window(self):
         """Otwiera okno edycji wizytówki użytkownika"""
