@@ -263,6 +263,18 @@ class App(ctk.CTk):
         )
         change_cat_btn.grid(row=0, column=3, padx=(10, 0))
         
+        # Przycisk usuwania zaznaczonych
+        delete_selected_btn = ctk.CTkButton(
+            search_frame,
+            text="🗑️ Usuń zaznaczone",
+            height=35,
+            font=ctk.CTkFont(size=13),
+            fg_color="#C8102E",
+            hover_color="#A00B24",
+            command=self.delete_selected_products
+        )
+        delete_selected_btn.grid(row=0, column=4, padx=(10, 0))
+        
         # Kontrolki paginacji
         pagination_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
         pagination_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 10))
@@ -638,6 +650,41 @@ class App(ctk.CTk):
             hover_color="gray50",
             command=cat_dialog.destroy
         ).pack(side="left", padx=5)
+    
+    def delete_selected_products(self):
+        """Usuwa zaznaczone produkty z bazy danych"""
+        if not self.selected_items:
+            messagebox.showwarning("Brak zaznaczenia", "Zaznacz produkty, które chcesz usunąć!")
+            return
+        
+        # Potwierdzenie usunięcia
+        count = len(self.selected_items)
+        product_names = ", ".join([p['name'][:30] + "..." if len(p['name']) > 30 else p['name'] for p in self.selected_items[:3]])
+        if count > 3:
+            product_names += f" i {count - 3} więcej"
+        
+        result = messagebox.askyesno(
+            "Potwierdzenie usunięcia",
+            f"Czy na pewno chcesz usunąć {count} produktów?\n\nZaznaczone: {product_names}\n\nTej operacji nie można cofnąć!"
+        )
+        
+        if not result:
+            return
+        
+        # Usuń produkty z bazy
+        success_count = 0
+        for product in self.selected_items:
+            if self.db.delete_product(product['id']):
+                success_count += 1
+        
+        if success_count == count:
+            messagebox.showinfo("Sukces", f"Usunięto {success_count} produktów!")
+        else:
+            messagebox.showwarning("Częściowy sukces", f"Usunięto {success_count} z {count} produktów")
+        
+        # Wyczyść zaznaczenie i odśwież listę
+        self.selected_items.clear()
+        self.load_products()
     
     def add_product(self):
         """Otwiera okno dodawania nowego produktu"""
@@ -1178,12 +1225,20 @@ class App(ctk.CTk):
         middle_panel = ctk.CTkFrame(main_frame, fg_color="gray20")
         middle_panel.grid(row=0, column=1, sticky="nsew", padx=5)
         
+        # Nagłówek sekcji
+        ctk.CTkLabel(
+            middle_panel,
+            text="DODAJ DO OFERTY",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#C8102E"
+        ).pack(pady=(15, 5))
+        
         middle_title_label = ctk.CTkLabel(
             middle_panel,
-            text="📦 Wybierz produkty",
-            font=ctk.CTkFont(size=16, weight="bold")
+            text="📦 Bez kategorii",
+            font=ctk.CTkFont(size=14, weight="bold")
         )
-        middle_title_label.pack(pady=15)
+        middle_title_label.pack(pady=(0, 15))
         
         products_scroll = ctk.CTkScrollableFrame(middle_panel, fg_color="gray15")
         products_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
@@ -1200,60 +1255,70 @@ class App(ctk.CTk):
             # Pobierz produkty
             products = self.db.get_products(category['id'])
             
-            if not products:
+            # Filtruj produkty - ukryj te, które już są w ofercie
+            available_products = [
+                p for p in products 
+                if not any(item.get('id') == p['id'] for item in selected_offer_items)
+            ]
+            
+            if not available_products:
                 ctk.CTkLabel(
                     products_scroll,
-                    text="Brak produktów w tej kategorii",
-                    text_color="gray"
+                    text="Wszystkie produkty z tej kategorii\njuż są w ofercie" if products else "Brak produktów w tej kategorii",
+                    text_color="gray",
+                    font=ctk.CTkFont(size=12)
                 ).pack(pady=20)
                 return
             
-            # Przycisk "Dodaj całą kategorię"
+            # Przycisk "Dodaj wszystkie dostępne produkty"
             add_all_btn = ctk.CTkButton(
                 products_scroll,
-                text=f"➕ Dodaj wszystkie produkty ({len(products)})",
+                text=f"➕ Dodaj wszystkie produkty ({len(available_products)})",
                 height=45,
                 font=ctk.CTkFont(size=13, weight="bold"),
                 fg_color="#C8102E",
                 hover_color="#B00D24",
-                command=lambda: add_all_products_from_category(products)
+                command=lambda: add_all_products_from_category(available_products)
             )
             add_all_btn.pack(fill="x", pady=10, padx=5)
             
-            # Lista produktów
-            for product in products:
-                product_frame = ctk.CTkFrame(products_scroll, fg_color="gray25")
-                product_frame.pack(fill="x", pady=3, padx=5)
+            # Lista produktów (tylko dostępnych) - kompaktowy widok
+            for product in available_products:
+                product_frame = ctk.CTkFrame(products_scroll, fg_color="gray25", height=30)
+                product_frame.pack(fill="x", pady=1, padx=5)
                 
-                # Nazwa produktu
+                # Nazwa produktu (skrócona jeśli za długa)
+                name_text = product['name'] if len(product['name']) <= 40 else product['name'][:37] + "..."
                 name_label = ctk.CTkLabel(
                     product_frame,
-                    text=product['name'],
-                    font=ctk.CTkFont(size=12),
+                    text=name_text,
+                    font=ctk.CTkFont(size=11),
                     anchor="w"
                 )
-                name_label.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+                name_label.pack(side="left", fill="x", expand=True, padx=8, pady=3)
                 
-                # Cena
+                # Cena kompaktowo
                 price_label = ctk.CTkLabel(
                     product_frame,
-                    text=f"{product['purchase_price_net']:.2f} zł",
-                    font=ctk.CTkFont(size=11),
-                    text_color="gray"
+                    text=f"{product['purchase_price_net']:.2f}zł",
+                    font=ctk.CTkFont(size=10),
+                    text_color="gray70",
+                    width=70
                 )
-                price_label.pack(side="left", padx=10)
+                price_label.pack(side="left", padx=5)
                 
-                # Przycisk dodaj
+                # Przycisk dodaj - kompaktowy
                 add_btn = ctk.CTkButton(
                     product_frame,
                     text="➕",
-                    width=40,
-                    height=30,
+                    width=30,
+                    height=24,
+                    font=ctk.CTkFont(size=11),
                     fg_color="#3B8ED0",
                     hover_color="#2E7AB8",
                     command=lambda p=product: add_product_to_offer(p)
                 )
-                add_btn.pack(side="right", padx=5, pady=5)
+                add_btn.pack(side="right", padx=3, pady=3)
         
         def add_all_products_from_category(products):
             """Dodaje wszystkie produkty z kategorii do oferty"""
@@ -1417,6 +1482,52 @@ class App(ctk.CTk):
         )
         change_cat_btn.pack(pady=(0, 5), padx=5, fill="x")
         
+        # Przycisk usuwania zaznaczonych z oferty
+        def delete_selected_from_offer():
+            """Usuwa zaznaczone produkty z oferty"""
+            if not selected_items_for_category_change:
+                messagebox.showwarning("Brak zaznaczenia", "Zaznacz produkty, które chcesz usunąć z oferty!")
+                return
+            
+            count = len(selected_items_for_category_change)
+            result = messagebox.askyesno(
+                "Potwierdzenie usunięcia",
+                f"Czy na pewno chcesz usunąć {count} zaznaczonych produktów z oferty?"
+            )
+            
+            if result:
+                # Usuń zaznaczone produkty z oferty
+                for item in selected_items_for_category_change[:]:
+                    if item in selected_offer_items:
+                        selected_offer_items.remove(item)
+                
+                # Wyczyść zaznaczenie
+                selected_items_for_category_change.clear()
+                
+                # Odśwież widok
+                refresh_offer_items()
+                
+                # Odśwież listę produktów w środkowej sekcji (pokaż usunięte produkty)
+                if selected_category_id[0] is not None:
+                    categories = self.db.get_categories()
+                    for cat in categories:
+                        if cat['id'] == selected_category_id[0]:
+                            select_category(cat)
+                            break
+                
+                messagebox.showinfo("Sukces", f"Usunięto {count} produktów z oferty!")
+        
+        delete_selected_btn = ctk.CTkButton(
+            right_panel,
+            text="🗑️ Usuń zaznaczone",
+            height=35,
+            font=ctk.CTkFont(size=12),
+            fg_color="#C8102E",
+            hover_color="#A00B24",
+            command=delete_selected_from_offer
+        )
+        delete_selected_btn.pack(pady=(0, 5), padx=5, fill="x")
+        
         offer_items_scroll = ctk.CTkScrollableFrame(right_panel, fg_color="gray15")
         offer_items_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
         
@@ -1438,11 +1549,29 @@ class App(ctk.CTk):
                 category_order_list.append(cat_name)
             
             refresh_offer_items()
+            
+            # Odśwież listę produktów w środkowej sekcji (ukryj dodany produkt)
+            if selected_category_id[0] is not None:
+                # Znajdź kategorię i odśwież
+                categories = self.db.get_categories()
+                for cat in categories:
+                    if cat['id'] == selected_category_id[0]:
+                        select_category(cat)
+                        break
         
         def remove_product_from_offer(product):
             """Usuwa produkt z oferty"""
             selected_offer_items.remove(product)
             refresh_offer_items()
+            
+            # Odśwież listę produktów w środkowej sekcji (pokaż usunięty produkt)
+            if selected_category_id[0] is not None:
+                # Znajdź kategorię i odśwież
+                categories = self.db.get_categories()
+                for cat in categories:
+                    if cat['id'] == selected_category_id[0]:
+                        select_category(cat)
+                        break
         
         def refresh_offer_items():
             """Odświeża listę wybranych produktów"""
@@ -1509,15 +1638,12 @@ class App(ctk.CTk):
                         command=lambda c=cat_name: move_category_down(c)
                     ).pack(side="left", padx=2)
                 
-                # Produkty w kategorii
+                # Produkty w kategorii - kompaktowy widok
                 for idx, item in enumerate(items_by_category[cat_name]):
-                    item_frame = ctk.CTkFrame(offer_items_scroll, fg_color="gray25")
-                    item_frame.pack(fill="x", pady=2, padx=5)
+                    item_frame = ctk.CTkFrame(offer_items_scroll, fg_color="gray25", height=35)
+                    item_frame.pack(fill="x", pady=1, padx=5)
                     
-                    # Górna część z checkboxem i nazwą
-                    top_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
-                    top_frame.pack(side="top", fill="x", padx=5, pady=(5, 0))
-                    
+                    # Wszystko w jednej linii
                     # Checkbox do zaznaczania
                     checkbox_var = ctk.BooleanVar(value=item in selected_items_for_category_change)
                     
@@ -1530,83 +1656,87 @@ class App(ctk.CTk):
                                 selected_items_for_category_change.remove(itm)
                     
                     checkbox = ctk.CTkCheckBox(
-                        top_frame,
+                        item_frame,
                         text="",
                         variable=checkbox_var,
-                        width=30,
+                        width=20,
                         command=on_checkbox_change
                     )
-                    checkbox.pack(side="left", padx=(5, 5))
+                    checkbox.pack(side="left", padx=(3, 3), pady=3)
                     
-                    # Nazwa
+                    # Nazwa produktu (skrócona jeśli za długa)
+                    name_text = item['name'] if len(item['name']) <= 35 else item['name'][:32] + "..."
                     name_label = ctk.CTkLabel(
-                        top_frame,
-                        text=item['name'],
-                        font=ctk.CTkFont(size=12),
-                        anchor="w"
+                        item_frame,
+                        text=name_text,
+                        font=ctk.CTkFont(size=11),
+                        anchor="w",
+                        width=200
                     )
-                    name_label.pack(side="left", fill="x", expand=True)
+                    name_label.pack(side="left", padx=3)
                     
-                    # Szczegóły: cena, VAT, marża
-                    details_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
-                    details_frame.pack(side="top", fill="x", padx=10, pady=(2, 8))
-                    
-                    detail_text = f"Cena: {item['purchase_price_net']:.2f} zł | VAT: {item['vat_rate']:.0f}% | Marża: {item.get('margin', 30):.1f}%"
+                    # Szczegóły kompaktowo
+                    detail_text = f"{item['purchase_price_net']:.2f}zł | {item['vat_rate']:.0f}% | M:{item.get('margin', 30):.0f}%"
                     ctk.CTkLabel(
-                        details_frame,
+                        item_frame,
                         text=detail_text,
-                        font=ctk.CTkFont(size=10),
-                        text_color="gray"
-                    ).pack(side="left")
+                        font=ctk.CTkFont(size=9),
+                        text_color="gray70",
+                        width=120
+                    ).pack(side="left", padx=3)
                     
-                    # Przyciski
+                    # Przyciski - kompaktowe
                     btn_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
-                    btn_frame.pack(side="right", padx=5, pady=5)
+                    btn_frame.pack(side="right", padx=2)
                     
                     # Przyciski kolejności produktu
                     if idx > 0:
                         ctk.CTkButton(
                             btn_frame,
                             text="⬆",
-                            width=30,
-                            height=30,
+                            width=22,
+                            height=22,
+                            font=ctk.CTkFont(size=10),
                             fg_color="gray30",
                             hover_color="gray40",
                             command=lambda c=cat_name, i=item: move_product_up_in_category(c, i)
-                        ).pack(side="left", padx=2)
+                        ).pack(side="left", padx=1)
                     
                     if idx < len(items_by_category[cat_name]) - 1:
                         ctk.CTkButton(
                             btn_frame,
                             text="⬇",
-                            width=30,
-                            height=30,
+                            width=22,
+                            height=22,
+                            font=ctk.CTkFont(size=10),
                             fg_color="gray30",
                             hover_color="gray40",
                             command=lambda c=cat_name, i=item: move_product_down_in_category(c, i)
-                        ).pack(side="left", padx=2)
+                        ).pack(side="left", padx=1)
                     
                     # Przycisk edytuj
                     ctk.CTkButton(
                         btn_frame,
                         text="✏️",
-                        width=35,
-                        height=30,
+                        width=24,
+                        height=22,
+                        font=ctk.CTkFont(size=9),
                         fg_color="gray30",
                         hover_color="#3B8ED0",
                         command=lambda i=item: edit_item_in_offer(i)
-                    ).pack(side="left", padx=2)
+                    ).pack(side="left", padx=1)
                     
                     # Przycisk usuń
                     ctk.CTkButton(
                         btn_frame,
                         text="🗑️",
-                        width=35,
-                        height=30,
+                        width=24,
+                        height=22,
+                        font=ctk.CTkFont(size=9),
                         fg_color="gray30",
                         hover_color="#C8102E",
                         command=lambda i=item: remove_product_from_offer(i)
-                    ).pack(side="left", padx=2)
+                    ).pack(side="left", padx=1)
         
         def move_category_up(cat_name):
             """Przesuwa kategorię w górę"""
