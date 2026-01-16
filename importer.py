@@ -83,7 +83,21 @@ class DataImporter:
             except:
                 df = pd.read_csv(file_path, encoding='utf-8-sig')
         elif file_path.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(file_path)
+            # Obsługa plików Excel z różnymi silnikami
+            try:
+                # Dla .xlsx używamy openpyxl (domyślnie)
+                if file_path.endswith('.xlsx'):
+                    df = pd.read_excel(file_path, engine='openpyxl')
+                else:
+                    # Dla starszych .xls próbujemy różnych silników
+                    try:
+                        df = pd.read_excel(file_path, engine='xlrd')
+                    except:
+                        # Jeśli xlrd nie zadziała, spróbuj openpyxl (może być .xls zapisany jako .xlsx)
+                        df = pd.read_excel(file_path, engine='openpyxl')
+            except Exception as e:
+                raise ValueError(f"Nie można odczytać pliku Excel: {str(e)}\n"
+                               f"Upewnij się, że plik nie jest otwarty w innym programie.")
         else:
             raise ValueError("Nieobsługiwany format pliku. Użyj CSV, XLS lub XLSX.")
         
@@ -93,6 +107,7 @@ class DataImporter:
             'nr': 'code',
             'Indeks': 'code',
             'Kod': 'code',
+            'kod': 'code',
             'Opis': 'name',
             'opis': 'name',
             'Nazwa': 'name',
@@ -106,7 +121,16 @@ class DataImporter:
             'Cena zakupu netto': 'purchase_price_net',
             'cena zakupu': 'purchase_price_net',
             'cena zakupu netto': 'purchase_price_net',
+            'Cena': 'purchase_price_net',
+            'cena': 'purchase_price_net',
             'Koszt': 'purchase_price_net',
+            'koszt': 'purchase_price_net',
+            'Koszt jednostkowy': 'purchase_price_net',
+            'koszt jednostkowy': 'purchase_price_net',
+            'Cena netto': 'purchase_price_net',
+            'cena netto': 'purchase_price_net',
+            'Wartość': 'purchase_price_net',
+            'wartość': 'purchase_price_net',
             'Tow. grupa księgowa VAT': 'vat_rate',
             'VAT': 'vat_rate',
             'Vat': 'vat_rate',
@@ -117,6 +141,8 @@ class DataImporter:
         
         # Znajdź i zmapuj kolumny
         renamed_columns = {}
+        original_columns = list(df.columns)
+        
         for col in df.columns:
             col_clean = col.strip()
             if col_clean in column_mapping:
@@ -129,7 +155,25 @@ class DataImporter:
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
-            raise ValueError(f"Brak wymaganych kolumn: {', '.join(missing_columns)}")
+            # Pokaż bardziej szczegółowy błąd z listą dostępnych kolumn
+            available_cols = ', '.join([f'"{col}"' for col in original_columns])
+            mapped_cols = ', '.join([f'"{k}" -> "{v}"' for k, v in renamed_columns.items()])
+            error_msg = (
+                f"Brak wymaganych kolumn: {', '.join(missing_columns)}\n\n"
+                f"Kolumny w pliku: {available_cols}\n"
+                f"Zmapowane kolumny: {mapped_cols if mapped_cols else 'brak'}"
+            )
+            raise ValueError(error_msg)
+        
+        # Informacja diagnostyczna - jeśli nie znaleziono kolumny z ceną
+        if 'purchase_price_net' not in df.columns:
+            import warnings
+            available_cols = ', '.join([f'"{col}"' for col in original_columns])
+            warnings.warn(
+                f"Nie znaleziono kolumny z ceną!\n"
+                f"Kolumny w pliku: {available_cols}\n"
+                f"Ceny zostaną ustawione na 0.0"
+            )
         
         # Ustaw domyślne wartości dla brakujących kolumn
         if 'unit' not in df.columns:
@@ -172,10 +216,31 @@ class DataImporter:
             - total_rows: int
         """
         try:
+            # Sprawdź czy plik istnieje
+            import os
+            if not os.path.exists(file_path):
+                return {
+                    'valid': False,
+                    'message': 'Plik nie istnieje',
+                    'preview': [],
+                    'total_rows': 0
+                }
+            
+            # Wczytaj plik w zależności od rozszerzenia
             if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, encoding='utf-8-sig')
-            elif file_path.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_path)
+                try:
+                    df = pd.read_csv(file_path, encoding='utf-8-sig', sep=';')
+                    if len(df.columns) == 1:
+                        df = pd.read_csv(file_path, encoding='utf-8-sig', sep=',')
+                except:
+                    df = pd.read_csv(file_path, encoding='utf-8-sig')
+            elif file_path.endswith('.xlsx'):
+                df = pd.read_excel(file_path, engine='openpyxl')
+            elif file_path.endswith('.xls'):
+                try:
+                    df = pd.read_excel(file_path, engine='xlrd')
+                except:
+                    df = pd.read_excel(file_path, engine='openpyxl')
             else:
                 return {
                     'valid': False,

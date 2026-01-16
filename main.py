@@ -1904,10 +1904,10 @@ class App(ctk.CTk):
         
         # Otwórz dialog wyboru pliku
         file_path = filedialog.askopenfilename(
-            title="Wybierz plik CSV lub Excel",
+            title="Wybierz plik Excel lub CSV",
             filetypes=[
-                ("Pliki CSV", "*.csv"),
                 ("Pliki Excel", "*.xlsx *.xls"),
+                ("Pliki CSV", "*.csv"),
                 ("Wszystkie pliki", "*.*")
             ]
         )
