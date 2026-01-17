@@ -96,10 +96,10 @@ class App(ctk.CTk):
         
         # === PRZYCISKI AKCJI ===
         
-        # Przycisk: Załaduj Bazę (CSV)
+        # Przycisk: Załaduj Bazę
         self.btn_load_csv = ctk.CTkButton(
             self.left_frame,
-            text="📥 Załaduj Bazę (CSV)",
+            text="📥 Załaduj Bazę",
             font=ctk.CTkFont(size=14, weight="bold"),
             height=45,
             corner_radius=8,
@@ -1101,7 +1101,7 @@ class App(ctk.CTk):
                 messagebox.showerror("Błąd", "Nie udało się zapisać szablonu.")
         
         def generate_pdf_from_creator():
-            """Generuje PDF z kreatora w osobnym wątku"""
+            """Generuje PDF z kreatora w osobnym wątku z progress bar"""
             title = offer_title_var.get().strip() or "Oferta handlowa"
             
             if not selected_offer_items:
@@ -1120,9 +1120,50 @@ class App(ctk.CTk):
             if not save_path:
                 return
             
-            # Zmień kursor na "wait" przed rozpoczęciem
-            creator.config(cursor="wait")
-            creator.update()
+            # Dialog z progress bar dla dużych zbiorów
+            progress_dialog = None
+            progress_bar = None
+            progress_label = None
+            
+            if len(selected_offer_items) > 200:
+                progress_dialog = ctk.CTkToplevel(creator)
+                progress_dialog.title("Generowanie PDF")
+                progress_dialog.geometry("400x150")
+                progress_dialog.transient(creator)
+                progress_dialog.grab_set()
+                
+                # Centrowanie
+                progress_dialog.update_idletasks()
+                x = (progress_dialog.winfo_screenwidth() // 2) - (400 // 2)
+                y = (progress_dialog.winfo_screenheight() // 2) - (150 // 2)
+                progress_dialog.geometry(f"400x150+{x}+{y}")
+                
+                ctk.CTkLabel(
+                    progress_dialog,
+                    text=f"Generowanie PDF z {len(selected_offer_items)} produktami...",
+                    font=ctk.CTkFont(size=14, weight="bold")
+                ).pack(pady=(20, 10))
+                
+                progress_bar = ctk.CTkProgressBar(progress_dialog, width=350)
+                progress_bar.set(0)
+                progress_bar.pack(pady=10)
+                
+                progress_label = ctk.CTkLabel(progress_dialog, text="0%")
+                progress_label.pack()
+                
+                progress_dialog.update()
+            else:
+                # Standardowy kursor wait
+                creator.config(cursor="wait")
+                creator.update()
+            
+            def update_progress(current, total):
+                """Callback do aktualizacji progress bar"""
+                if progress_bar and progress_label and progress_dialog:
+                    progress = current / total if total > 0 else 0
+                    progress_bar.set(progress)
+                    progress_label.configure(text=f"{int(progress * 100)}% ({current}/{total})")
+                    progress_dialog.update()
             
             def pdf_generation_task():
                 """Zadanie generowania PDF wykonywane w tle"""
@@ -1138,11 +1179,19 @@ class App(ctk.CTk):
                         'category_order': cat_order
                     }
                     
-                    success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
+                    # Generuj PDF z progress callback
+                    success = self.pdf_gen.generate_offer_pdf(
+                        offer_data, 
+                        save_path,
+                        progress_callback=update_progress if len(selected_offer_items) > 200 else None
+                    )
                     
                     # Przywróć kursor i pokaż wynik w głównym wątku
                     def show_result():
+                        if progress_dialog:
+                            progress_dialog.destroy()
                         creator.config(cursor="")
+                        
                         if success:
                             # Zapytaj czy zapisać jako szablon
                             if messagebox.askyesno("Zapisać szablon?", "PDF wygenerowano!\n\nCzy zapisać tę ofertę jako szablon do bazy?"):
@@ -1157,6 +1206,8 @@ class App(ctk.CTk):
                 except Exception as e:
                     # Obsługa błędów w głównym wątku
                     def show_error():
+                        if progress_dialog:
+                            progress_dialog.destroy()
                         creator.config(cursor="")
                         messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
                     
@@ -1258,7 +1309,7 @@ class App(ctk.CTk):
         products_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
         
         def select_category(category):
-            """Wyświetla produkty wybranej kategorii"""
+            """Wyświetla produkty wybranej kategorii z optymalizacją dla dużych zbiorów"""
             selected_category_id[0] = category['id']
             middle_title_label.configure(text=f"📦 {category['name']}")
             
@@ -1269,10 +1320,17 @@ class App(ctk.CTk):
             # Pobierz produkty
             products = self.db.get_products(category['id'])
             
+            # Zbuduj set ID produktów już w ofercie dla szybkiego sprawdzania
+            offer_product_ids = set()
+            for item in selected_offer_items:
+                prod_id = item.get('id')
+                if prod_id is not None:
+                    offer_product_ids.add(prod_id)
+            
             # Filtruj produkty - ukryj te, które już są w ofercie
             available_products = [
                 p for p in products 
-                if not any(item.get('id') == p['id'] for item in selected_offer_items)
+                if p.get('id') not in offer_product_ids
             ]
             
             if not available_products:
@@ -1296,8 +1354,22 @@ class App(ctk.CTk):
             )
             add_all_btn.pack(fill="x", pady=10, padx=5)
             
-            # Lista produktów (tylko dostępnych) - kompaktowy widok
-            for product in available_products:
+            # OPTYMALIZACJA: Limit widgetów dla dużych kategorii
+            MAX_DISPLAY = 200  # Maksymalnie 200 produktów do wyświetlenia
+            display_count = min(len(available_products), MAX_DISPLAY)
+            
+            if len(available_products) > MAX_DISPLAY:
+                warning_label = ctk.CTkLabel(
+                    products_scroll,
+                    text=f"⚠️ Wyświetlono {MAX_DISPLAY} z {len(available_products)} produktów.\nUżyj przycisku 'Dodaj wszystkie' lub wyszukaj w głównym widoku.",
+                    text_color="orange",
+                    font=ctk.CTkFont(size=10),
+                    wraplength=450
+                )
+                warning_label.pack(fill="x", pady=5, padx=5)
+            
+            # Lista produktów (tylko pierwsze MAX_DISPLAY) - kompaktowy widok
+            for product in available_products[:display_count]:
                 product_frame = ctk.CTkFrame(products_scroll, fg_color="gray25", height=30)
                 product_frame.pack(fill="x", pady=1, padx=5)
                 
@@ -1335,38 +1407,141 @@ class App(ctk.CTk):
                 add_btn.pack(side="right", padx=3, pady=3)
         
         def add_all_products_from_category(products):
-            """Dodaje wszystkie produkty z kategorii do oferty"""
-            added = []
-            already_in = []
-            
-            for product in products:
-                # Sprawdź czy produkt już jest w ofercie
-                if any(item.get('id') == product['id'] for item in selected_offer_items):
-                    already_in.append(product['name'])
-                else:
-                    # Dodaj produkt
-                    product_copy = product.copy()
-                    product_copy['margin'] = product.get('default_margin', 30.0)
-                    selected_offer_items.append(product_copy)
-                    added.append(product['name'])
+            """Dodaje wszystkie produkty z kategorii do oferty z progress bar"""
+            if len(products) > 100:
+                # Dla dużych zbiorów - pokaż dialog z progress bar
+                progress_dialog = ctk.CTkToplevel(creator)
+                progress_dialog.title("Dodawanie produktów")
+                progress_dialog.geometry("400x150")
+                progress_dialog.transient(creator)
+                progress_dialog.grab_set()
+                
+                # Centrowanie
+                progress_dialog.update_idletasks()
+                x = (progress_dialog.winfo_screenwidth() // 2) - (400 // 2)
+                y = (progress_dialog.winfo_screenheight() // 2) - (150 // 2)
+                progress_dialog.geometry(f"400x150+{x}+{y}")
+                
+                ctk.CTkLabel(
+                    progress_dialog,
+                    text=f"Dodawanie {len(products)} produktów...",
+                    font=ctk.CTkFont(size=14, weight="bold")
+                ).pack(pady=(20, 10))
+                
+                progress_bar = ctk.CTkProgressBar(progress_dialog, width=350)
+                progress_bar.set(0)
+                progress_bar.pack(pady=10)
+                
+                progress_label = ctk.CTkLabel(progress_dialog, text="0%")
+                progress_label.pack()
+                
+                progress_dialog.update()
+                
+                # Dodawanie w batch'ach
+                added = []
+                already_in = []
+                batch_size = 50
+                
+                for i, product in enumerate(products):
+                    # Sprawdź czy produkt już jest w ofercie
+                    if any(item.get('id') == product['id'] for item in selected_offer_items):
+                        already_in.append(product['name'])
+                    else:
+                        # Dodaj produkt
+                        product_copy = product.copy()
+                        product_copy['margin'] = product.get('default_margin', 30.0)
+                        selected_offer_items.append(product_copy)
+                        added.append(product['name'])
+                        
+                        # Dodaj kategorię do kolejności jeśli jeszcze nie ma
+                        cat_name = product.get('category_name', 'Bez kategorii')
+                        if cat_name not in category_order_list:
+                            category_order_list.append(cat_name)
                     
-                    # Dodaj kategorię do kolejności jeśli jeszcze nie ma
-                    cat_name = product.get('category_name', 'Bez kategorii')
-                    if cat_name not in category_order_list:
-                        category_order_list.append(cat_name)
-            
-            # Odśwież widok
-            refresh_offer_items()
-            
-            # Pokaż komunikaty zbiorcze
-            messages = []
-            if added:
-                messages.append(f"✅ Dodano ({len(added)}):\n" + "\n".join([f"• {name}" for name in added]))
-            if already_in:
-                messages.append(f"ℹ️ Już w ofercie ({len(already_in)}):\n" + "\n".join([f"• {name}" for name in already_in]))
-            
-            if messages:
-                messagebox.showinfo("Dodawanie produktów", "\n\n".join(messages))
+                    # Aktualizuj progress co batch_size
+                    if (i + 1) % batch_size == 0 or i == len(products) - 1:
+                        progress = (i + 1) / len(products)
+                        progress_bar.set(progress)
+                        progress_label.configure(text=f"{int(progress * 100)}%")
+                        progress_dialog.update()
+                
+                # Zmień tytuł na renderowanie
+                progress_label.configure(text="Renderowanie widoku...")
+                progress_bar.set(0)
+                progress_dialog.update()
+                
+                def refresh_async():
+                    """Odświeża widok asynchronicznie"""
+                    refresh_offer_items()
+                    progress_dialog.destroy()
+                    
+                    # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty)
+                    if selected_category_id[0] is not None:
+                        categories = self.db.get_categories()
+                        for cat in categories:
+                            if cat['id'] == selected_category_id[0]:
+                                select_category(cat)
+                                break
+                    
+                    # Pokaż komunikat zbiorczy
+                    if len(added) > 50:
+                        messagebox.showinfo("Sukces", f"✅ Dodano {len(added)} produktów do oferty!")
+                    else:
+                        messages = []
+                        if added:
+                            messages.append(f"✅ Dodano ({len(added)}):\n" + "\n".join([f"• {name}" for name in added[:20]]))
+                            if len(added) > 20:
+                                messages.append(f"... i {len(added) - 20} więcej")
+                        if already_in and len(already_in) <= 10:
+                            messages.append(f"ℹ️ Już w ofercie ({len(already_in)}):\n" + "\n".join([f"• {name}" for name in already_in]))
+                        
+                        if messages:
+                            messagebox.showinfo("Dodawanie produktów", "\n\n".join(messages))
+                
+                # Uruchom odświeżanie w osobnym wątku
+                thread = threading.Thread(target=refresh_async, daemon=True)
+                thread.start()
+                
+            else:
+                # Standardowe dodawanie dla małych zbiorów
+                added = []
+                already_in = []
+                
+                for product in products:
+                    if any(item.get('id') == product['id'] for item in selected_offer_items):
+                        already_in.append(product['name'])
+                    else:
+                        product_copy = product.copy()
+                        product_copy['margin'] = product.get('default_margin', 30.0)
+                        selected_offer_items.append(product_copy)
+                        added.append(product['name'])
+                        
+                        cat_name = product.get('category_name', 'Bez kategorii')
+                        if cat_name not in category_order_list:
+                            category_order_list.append(cat_name)
+                
+                # Dla małych zbiorów - standardowe odświeżanie
+                refresh_offer_items()
+                
+                # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty)
+                if selected_category_id[0] is not None:
+                    categories = self.db.get_categories()
+                    for cat in categories:
+                        if cat['id'] == selected_category_id[0]:
+                            select_category(cat)
+                            break
+                
+                # Pokaż komunikat
+                messages = []
+                if added:
+                    messages.append(f"✅ Dodano ({len(added)}):\n" + "\n".join([f"• {name}" for name in added[:20]]))
+                    if len(added) > 20:
+                        messages.append(f"... i {len(added) - 20} więcej")
+                if already_in and len(already_in) <= 10:
+                    messages.append(f"ℹ️ Już w ofercie ({len(already_in)}):\n" + "\n".join([f"• {name}" for name in already_in]))
+                
+                if messages:
+                    messagebox.showinfo("Dodawanie produktów", "\n\n".join(messages))
         
         # === PRAWY PANEL: Wybrane produkty w ofercie ===
         right_panel = ctk.CTkFrame(main_frame, fg_color="gray20")
@@ -1588,7 +1763,8 @@ class App(ctk.CTk):
                         break
         
         def refresh_offer_items():
-            """Odświeża listę wybranych produktów"""
+            """Odświeża listę wybranych produktów z optymalizacją dla dużych zbiorów"""
+            # Wyczyść wszystkie widgety
             for widget in offer_items_scroll.winfo_children():
                 widget.destroy()
             
@@ -1601,6 +1777,94 @@ class App(ctk.CTk):
                 ).pack(pady=50)
                 return
             
+            # KRYTYCZNA OPTYMALIZACJA: Dla >1000 produktów - tylko widok sumaryczny
+            if len(selected_offer_items) > 1000:
+                # Grupuj po kategoriach
+                items_by_category = {}
+                for item in selected_offer_items:
+                    cat = item.get('category_name', 'Bez kategorii')
+                    if cat not in items_by_category:
+                        items_by_category[cat] = []
+                    items_by_category[cat].append(item)
+                
+                # Pokaż tylko podsumowanie
+                summary_frame = ctk.CTkFrame(offer_items_scroll, fg_color="gray20")
+                summary_frame.pack(fill="both", expand=True, padx=10, pady=10)
+                
+                ctk.CTkLabel(
+                    summary_frame,
+                    text=f"📋 Oferta zawiera {len(selected_offer_items)} produktów",
+                    font=ctk.CTkFont(size=18, weight="bold")
+                ).pack(pady=20)
+                
+                ctk.CTkLabel(
+                    summary_frame,
+                    text="⚠️ Zbyt duża liczba produktów do wyświetlenia szczegółów\n\nWidok szczegółowy dostępny dla ofert < 1000 pozycji",
+                    font=ctk.CTkFont(size=12),
+                    text_color="orange",
+                    justify="center"
+                ).pack(pady=10)
+                
+                # Podsumowanie per kategoria
+                summary_text_frame = ctk.CTkFrame(summary_frame, fg_color="gray15")
+                summary_text_frame.pack(fill="both", expand=True, padx=20, pady=20)
+                
+                ctk.CTkLabel(
+                    summary_text_frame,
+                    text="Podsumowanie kategorii:",
+                    font=ctk.CTkFont(size=14, weight="bold")
+                ).pack(pady=10)
+                
+                for cat_name in category_order_list:
+                    if cat_name in items_by_category:
+                        count = len(items_by_category[cat_name])
+                        cat_label = ctk.CTkLabel(
+                            summary_text_frame,
+                            text=f"• {cat_name}: {count} produktów",
+                            font=ctk.CTkFont(size=12),
+                            anchor="w"
+                        )
+                        cat_label.pack(fill="x", padx=20, pady=2)
+                
+                # Przyciski akcji
+                action_frame = ctk.CTkFrame(summary_frame, fg_color="transparent")
+                action_frame.pack(pady=20)
+                
+                ctk.CTkButton(
+                    action_frame,
+                    text="🗑️ Wyczyść całą ofertę",
+                    width=200,
+                    height=40,
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    fg_color="#C8102E",
+                    hover_color="#A00B24",
+                    command=lambda: clear_all_offer_items()
+                ).pack(pady=5)
+                
+                ctk.CTkLabel(
+                    summary_frame,
+                    text="💡 Możesz wygenerować PDF z całą ofertą używając przycisku na górze",
+                    font=ctk.CTkFont(size=11),
+                    text_color="gray70"
+                ).pack(pady=10)
+                
+                return  # Nie renderuj szczegółów
+            
+            # Standardowy widok dla ≤1000 produktów
+            # Pokaż komunikat ładowania dla zbiorów >500
+            if len(selected_offer_items) > 500:
+                loading_label = ctk.CTkLabel(
+                    offer_items_scroll,
+                    text="⏳ Ładowanie produktów...",
+                    font=ctk.CTkFont(size=14, weight="bold")
+                )
+                loading_label.pack(pady=50)
+                offer_items_scroll.update()
+                
+                # Wyczyść ponownie
+                for widget in offer_items_scroll.winfo_children():
+                    widget.destroy()
+            
             # Grupuj po kategoriach
             items_by_category = {}
             for item in selected_offer_items:
@@ -1609,7 +1873,11 @@ class App(ctk.CTk):
                     items_by_category[cat] = []
                 items_by_category[cat].append(item)
             
-            # Wyświetl według kolejności kategorii
+            # Wyświetl według kolejności kategorii z batchingiem
+            total_items = len(selected_offer_items)
+            items_processed = 0
+            BATCH_SIZE = 100  # Przetwarzaj po 100 produktów na raz
+            
             for cat_name in category_order_list:
                 if cat_name not in items_by_category:
                     continue
@@ -1621,7 +1889,7 @@ class App(ctk.CTk):
                 
                 ctk.CTkLabel(
                     cat_header,
-                    text=cat_name,
+                    text=f"{cat_name} ({len(items_by_category[cat_name])})",
                     font=ctk.CTkFont(size=14, weight="bold"),
                     text_color="white"
                 ).pack(side="left", padx=10, pady=8)
@@ -1653,8 +1921,13 @@ class App(ctk.CTk):
                         command=lambda c=cat_name: move_category_down(c)
                     ).pack(side="left", padx=2)
                 
-                # Produkty w kategorii - kompaktowy widok
+                # Produkty w kategorii - kompaktowy widok z batchingiem
                 for idx, item in enumerate(items_by_category[cat_name]):
+                    items_processed += 1
+                    
+                    # Co BATCH_SIZE produktów - odśwież UI aby zapobiec zawieszeniu
+                    if items_processed % BATCH_SIZE == 0 and total_items > 500:
+                        offer_items_scroll.update()
                     item_frame = ctk.CTkFrame(offer_items_scroll, fg_color="gray25", height=35)
                     item_frame.pack(fill="x", pady=1, padx=5)
                     
@@ -1679,26 +1952,43 @@ class App(ctk.CTk):
                     )
                     checkbox.pack(side="left", padx=(3, 3), pady=3)
                     
-                    # Nazwa produktu (skrócona jeśli za długa)
-                    name_text = item['name'] if len(item['name']) <= 35 else item['name'][:32] + "..."
-                    name_label = ctk.CTkLabel(
-                        item_frame,
-                        text=name_text,
-                        font=ctk.CTkFont(size=11),
-                        anchor="w",
-                        width=200
-                    )
-                    name_label.pack(side="left", padx=3)
+                    # Kontener na nazwę i ceny
+                    info_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
+                    info_frame.pack(side="left", fill="x", expand=True, padx=3)
                     
-                    # Szczegóły kompaktowo
-                    detail_text = f"{item['purchase_price_net']:.2f}zł | {item['vat_rate']:.0f}% | M:{item.get('margin', 30):.0f}%"
-                    ctk.CTkLabel(
-                        item_frame,
+                    # Nazwa produktu (skrócona jeśli za długa)
+                    name_text = item['name'] if len(item['name']) <= 30 else item['name'][:27] + "..."
+                    name_label = ctk.CTkLabel(
+                        info_frame,
+                        text=name_text,
+                        font=ctk.CTkFont(size=10),
+                        anchor="w"
+                    )
+                    name_label.pack(side="left", padx=(0, 10))
+                    
+                    # Oblicz cenę netto po marży
+                    purchase_price = item['purchase_price_net']
+                    margin = item.get('margin', 30)
+                    offer_price = purchase_price * (1 + margin / 100)
+                    
+                    # CENA NA OFERCIE - wyróżniona jako najważniejsza informacja
+                    offer_price_label = ctk.CTkLabel(
+                        info_frame,
+                        text=f"➜ {offer_price:.2f} zł",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        text_color="#3B8ED0"
+                    )
+                    offer_price_label.pack(side="left", padx=(0, 5))
+                    
+                    # Szczegóły pomocnicze (cena zakupu i marża)
+                    detail_text = f"(zakup: {purchase_price:.2f} zł | M:{margin:.0f}%)"
+                    detail_label = ctk.CTkLabel(
+                        info_frame,
                         text=detail_text,
-                        font=ctk.CTkFont(size=9),
-                        text_color="gray70",
-                        width=120
-                    ).pack(side="left", padx=3)
+                        font=ctk.CTkFont(size=8),
+                        text_color="gray60"
+                    )
+                    detail_label.pack(side="left", padx=2)
                     
                     # Przyciski - kompaktowe
                     btn_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
@@ -1753,6 +2043,15 @@ class App(ctk.CTk):
                         command=lambda i=item: remove_product_from_offer(i)
                     ).pack(side="left", padx=1)
         
+        def clear_all_offer_items():
+            """Czyści wszystkie produkty z oferty"""
+            if messagebox.askyesno("Potwierdzenie", f"Czy na pewno usunąć wszystkie {len(selected_offer_items)} produktów z oferty?"):
+                selected_offer_items.clear()
+                category_order_list.clear()
+                selected_items_for_category_change.clear()
+                refresh_offer_items()
+                messagebox.showinfo("Sukces", "Wyczyszczono ofertę!")
+        
         def move_category_up(cat_name):
             """Przesuwa kategorię w górę"""
             idx = category_order_list.index(cat_name)
@@ -1795,15 +2094,15 @@ class App(ctk.CTk):
             """Edytuje wartości produktu w ofercie"""
             edit_dialog = ctk.CTkToplevel(creator)
             edit_dialog.title("Edycja produktu w ofercie")
-            edit_dialog.geometry("450x500")
+            edit_dialog.geometry("450x750")
             edit_dialog.transient(creator)
             edit_dialog.grab_set()
             
             # Centrowanie
             edit_dialog.update_idletasks()
             x = (edit_dialog.winfo_screenwidth() // 2) - (450 // 2)
-            y = (edit_dialog.winfo_screenheight() // 2) - (500 // 2)
-            edit_dialog.geometry(f"450x500+{x}+{y}")
+            y = (edit_dialog.winfo_screenheight() // 2) - (750 // 2)
+            edit_dialog.geometry(f"450x750+{x}+{y}")
             
             ctk.CTkLabel(edit_dialog, text="Edycja produktu", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=15)
             
@@ -1815,6 +2114,23 @@ class App(ctk.CTk):
             name_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
             name_entry.insert(0, item['name'])
             name_entry.pack(fill="x", pady=(0, 10))
+            
+            # Kategoria
+            ctk.CTkLabel(form_frame, text="Kategoria:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            categories = self.db.get_categories()
+            category_names = [cat['name'] for cat in categories]
+            if not category_names:
+                category_names = ["Bez kategorii"]
+            
+            category_var = ctk.StringVar(value=item.get('category_name', 'Bez kategorii'))
+            category_menu = ctk.CTkOptionMenu(
+                form_frame,
+                variable=category_var,
+                values=category_names,
+                height=35,
+                font=ctk.CTkFont(size=12)
+            )
+            category_menu.pack(fill="x", pady=(0, 10))
             
             # Cena zakupu netto
             ctk.CTkLabel(form_frame, text="Cena zakupu netto:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
@@ -1834,28 +2150,140 @@ class App(ctk.CTk):
             margin_entry.insert(0, str(item.get('margin', 30)))
             margin_entry.pack(fill="x", pady=(0, 10))
             
+            # Cena sprzedaży netto (ręczne ustawienie)
+            ctk.CTkLabel(form_frame, text="Cena sprzedaży netto:", font=ctk.CTkFont(size=12, weight="bold")).pack(anchor="w", pady=(5, 2))
+            sale_price_entry = ctk.CTkEntry(form_frame, height=35, font=ctk.CTkFont(size=12))
+            current_sale_price = item['purchase_price_net'] * (1 + item.get('margin', 30) / 100)
+            sale_price_entry.insert(0, f"{current_sale_price:.2f}")
+            sale_price_entry.pack(fill="x", pady=(0, 10))
+            
+            # Wyświetl aktualną marżę i cenę
+            info_label = ctk.CTkLabel(
+                form_frame,
+                text="",
+                font=ctk.CTkFont(size=11),
+                text_color="gray70"
+            )
+            info_label.pack(pady=(5, 10))
+            
+            def update_from_margin(*args):
+                """Aktualizuje cenę sprzedaży gdy zmienia się marża"""
+                try:
+                    price = float(price_entry.get().strip().replace(',', '.'))
+                    margin = float(margin_entry.get().strip().replace(',', '.'))
+                    sale_price = price * (1 + margin / 100)
+                    
+                    # Aktualizuj pole ceny sprzedaży bez triggerowania jego callbacka
+                    sale_price_entry.delete(0, 'end')
+                    sale_price_entry.insert(0, f"{sale_price:.2f}")
+                    
+                    info_label.configure(text=f"Marża: {margin:.2f}% → Cena sprzedaży: {sale_price:.2f} zł")
+                except:
+                    info_label.configure(text="")
+            
+            def update_from_sale_price(*args):
+                """Aktualizuje marżę gdy zmienia się cena sprzedaży"""
+                try:
+                    price = float(price_entry.get().strip().replace(',', '.'))
+                    sale_price = float(sale_price_entry.get().strip().replace(',', '.'))
+                    
+                    if price > 0:
+                        # Oblicz marżę z ceny sprzedaży
+                        calculated_margin = ((sale_price / price) - 1) * 100
+                        
+                        # Aktualizuj pole marży
+                        margin_entry.delete(0, 'end')
+                        margin_entry.insert(0, f"{calculated_margin:.2f}")
+                        
+                        info_label.configure(text=f"Cena sprzedaży: {sale_price:.2f} zł → Marża: {calculated_margin:.2f}%")
+                except:
+                    info_label.configure(text="")
+            
+            # Binduj aktualizację
+            price_entry.bind('<KeyRelease>', lambda e: (update_from_margin(), update_from_sale_price()))
+            margin_entry.bind('<KeyRelease>', update_from_margin)
+            sale_price_entry.bind('<KeyRelease>', update_from_sale_price)
+            update_from_margin()  # Inicjalne wyświetlenie
+            
             def save_edits():
                 try:
-                    item['name'] = name_entry.get().strip()
-                    item['purchase_price_net'] = float(price_entry.get().strip().replace(',', '.'))
-                    item['vat_rate'] = float(vat_entry.get().strip().replace(',', '.'))
-                    item['margin'] = float(margin_entry.get().strip().replace(',', '.'))
+                    new_name = name_entry.get().strip()
+                    new_price = float(price_entry.get().strip().replace(',', '.'))
+                    new_vat = float(vat_entry.get().strip().replace(',', '.'))
+                    new_margin = float(margin_entry.get().strip().replace(',', '.'))
+                    new_category = category_var.get()
+                    
+                    # Znajdź ID nowej kategorii
+                    new_category_id = None
+                    for cat in categories:
+                        if cat['name'] == new_category:
+                            new_category_id = cat['id']
+                            break
+                    
+                    # Sprawdź czy coś się zmieniło w bazie danych
+                    price_changed = abs(item['purchase_price_net'] - new_price) > 0.001
+                    category_changed = item.get('category_id') != new_category_id
+                    
+                    # Jeśli produkt ma ID, zaktualizuj w bazie danych
+                    if item.get('id') and (price_changed or category_changed):
+                        success = self.db.update_product(
+                            product_id=item['id'],
+                            code=item.get('code'),
+                            name=new_name,
+                            unit=item.get('unit', 'szt.'),
+                            purchase_price_net=new_price,
+                            vat_rate=new_vat,
+                            category_id=new_category_id
+                        )
+                        
+                        if success and category_changed:
+                            # Dodaj nową kategorię do kolejności jeśli jeszcze nie ma
+                            if new_category not in category_order_list:
+                                category_order_list.append(new_category)
+                    
+                    # Zaktualizuj wartości w ofercie (marża tylko dla tego produktu w ofercie)
+                    item['name'] = new_name
+                    item['purchase_price_net'] = new_price
+                    item['vat_rate'] = new_vat
+                    item['margin'] = new_margin
+                    item['category_name'] = new_category
+                    item['category_id'] = new_category_id
                     
                     refresh_offer_items()
                     edit_dialog.destroy()
-                    messagebox.showinfo("Sukces", "Wartości zostały zaktualizowane!")
+                    
+                    if item.get('id') and (price_changed or category_changed):
+                        messagebox.showinfo("Sukces", "Wartości zostały zaktualizowane w ofercie i w bazie danych!")
+                    else:
+                        messagebox.showinfo("Sukces", "Wartości zostały zaktualizowane w ofercie!")
                 except ValueError:
                     messagebox.showerror("Błąd", "Nieprawidłowe wartości liczbowe!")
             
+            # Przyciski akcji
+            btn_frame = ctk.CTkFrame(edit_dialog, fg_color="transparent")
+            btn_frame.pack(pady=20)
+            
             ctk.CTkButton(
-                edit_dialog,
+                btn_frame,
                 text="Zapisz zmiany",
+                width=150,
                 height=40,
                 font=ctk.CTkFont(size=13, weight="bold"),
                 fg_color="#3B8ED0",
                 hover_color="#2E7AB8",
                 command=save_edits
-            ).pack(pady=20)
+            ).pack(side="left", padx=5)
+            
+            ctk.CTkButton(
+                btn_frame,
+                text="Anuluj",
+                width=150,
+                height=40,
+                font=ctk.CTkFont(size=13),
+                fg_color="gray40",
+                hover_color="gray50",
+                command=edit_dialog.destroy
+            ).pack(side="left", padx=5)
         
         # === DOLNY PANEL: Duplikacja przycisków ===
         bottom_frame = ctk.CTkFrame(creator, fg_color="gray20", height=70)
@@ -2231,14 +2659,18 @@ class App(ctk.CTk):
         
         def delete_category(cat):
             """Usuwa kategorię"""
-            if messagebox.askyesno("Potwierdzenie", f"Czy na pewno usunąć kategorię '{cat['name']}'?\n\nUwaga: Można usunąć tylko kategorie bez przypisanych produktów."):
+            if cat['name'] == 'Bez kategorii':
+                messagebox.showerror("Błąd", "Nie można usunąć kategorii 'Bez kategorii'.")
+                return
+            
+            if messagebox.askyesno("Potwierdzenie", f"Czy na pewno usunąć kategorię '{cat['name']}'?\n\nProdukty z tej kategorii zostaną przeniesione do kategorii 'Bez kategorii'."):
                 result = self.db.delete_category(cat['id'])
                 if result:
                     messagebox.showinfo("Sukces", "Kategoria została usunięta!")
                     refresh_categories()
                     self.load_products()
                 else:
-                    messagebox.showerror("Błąd", "Nie można usunąć kategorii. Prawdopodobnie ma przypisane produkty.")
+                    messagebox.showerror("Błąd", "Nie można usunąć kategorii 'Bez kategorii'.")
         
         # Przycisk dodaj kategorię
         add_btn = ctk.CTkButton(
@@ -2373,7 +2805,7 @@ class App(ctk.CTk):
             self.open_offer_creator(existing_offer_id=offer['id'])
         
         def generate_from_saved(offer):
-            """Generuje PDF z zapisanej oferty"""
+            """Generuje PDF z zapisanej oferty z progress bar dla dużych zbiorów"""
             full_offer = self.db.get_offer_by_id(offer['id'])
             if not full_offer:
                 messagebox.showerror("Błąd", "Nie można załadować oferty!")
@@ -2391,27 +2823,91 @@ class App(ctk.CTk):
             if not save_path:
                 return
             
-            try:
-                # Przygotuj dane oferty
-                business_card = self.db.get_business_card()
-                offer_data = {
-                    'title': full_offer['title'],
-                    'date': datetime.now().strftime('%d.%m.%Y'),
-                    'items': full_offer['items'],
-                    'business_card': business_card,
-                    'category_order': full_offer.get('category_order', {})
-                }
+            # Dialog z progress bar dla dużych zbiorów
+            progress_dialog = None
+            progress_bar = None
+            progress_label = None
+            
+            items_count = len(full_offer['items'])
+            
+            if items_count > 200:
+                progress_dialog = ctk.CTkToplevel(offers_window)
+                progress_dialog.title("Generowanie PDF")
+                progress_dialog.geometry("400x150")
+                progress_dialog.transient(offers_window)
+                progress_dialog.grab_set()
                 
-                # Generuj PDF
-                success = self.pdf_gen.generate_offer_pdf(offer_data, save_path)
+                # Centrowanie
+                progress_dialog.update_idletasks()
+                x = (progress_dialog.winfo_screenwidth() // 2) - (400 // 2)
+                y = (progress_dialog.winfo_screenheight() // 2) - (150 // 2)
+                progress_dialog.geometry(f"400x150+{x}+{y}")
                 
-                if success:
-                    messagebox.showinfo("Sukces", f"Oferta PDF została wygenerowana!\n\nZapisano jako:\n{save_path}")
-                else:
-                    messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
+                ctk.CTkLabel(
+                    progress_dialog,
+                    text=f"Generowanie PDF z {items_count} produktami...",
+                    font=ctk.CTkFont(size=14, weight="bold")
+                ).pack(pady=(20, 10))
                 
-            except Exception as e:
-                messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
+                progress_bar = ctk.CTkProgressBar(progress_dialog, width=350)
+                progress_bar.set(0)
+                progress_bar.pack(pady=10)
+                
+                progress_label = ctk.CTkLabel(progress_dialog, text="0%")
+                progress_label.pack()
+                
+                progress_dialog.update()
+            
+            def update_progress(current, total):
+                """Callback do aktualizacji progress bar"""
+                if progress_bar and progress_label and progress_dialog:
+                    progress = current / total if total > 0 else 0
+                    progress_bar.set(progress)
+                    progress_label.configure(text=f"{int(progress * 100)}% ({current}/{total})")
+                    progress_dialog.update()
+            
+            def generate_task():
+                """Zadanie generowania wykonywane w tle"""
+                try:
+                    # Przygotuj dane oferty
+                    business_card = self.db.get_business_card()
+                    offer_data = {
+                        'title': full_offer['title'],
+                        'date': datetime.now().strftime('%d.%m.%Y'),
+                        'items': full_offer['items'],
+                        'business_card': business_card,
+                        'category_order': full_offer.get('category_order', {})
+                    }
+                    
+                    # Generuj PDF z progress callback
+                    success = self.pdf_gen.generate_offer_pdf(
+                        offer_data, 
+                        save_path,
+                        progress_callback=update_progress if items_count > 200 else None
+                    )
+                    
+                    def show_result():
+                        if progress_dialog:
+                            progress_dialog.destroy()
+                        
+                        if success:
+                            messagebox.showinfo("Sukces", f"Oferta PDF została wygenerowana!\n\nZapisano jako:\n{save_path}")
+                        else:
+                            messagebox.showerror("Błąd", "Nie udało się wygenerować PDF.")
+                    
+                    self.after(0, show_result)
+                    
+                except Exception as e:
+                    def show_error():
+                        if progress_dialog:
+                            progress_dialog.destroy()
+                        messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
+                    
+                    self.after(0, show_error)
+            
+            # Uruchom wątek
+            thread = threading.Thread(target=generate_task, daemon=True)
+            thread.start()
         
         def delete_offer(offer):
             """Usuwa zapisaną ofertę"""

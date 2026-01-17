@@ -213,18 +213,33 @@ class Database:
         return False
     
     def delete_category(self, category_id: int) -> bool:
-        """Usuwa kategorię - tylko jeśli nie ma przypisanych produktów"""
+        """Usuwa kategorię - produkty z tej kategorii otrzymują kategorię 'Bez kategorii'"""
         conn = None
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Sprawdź czy kategoria ma produkty
-            cursor.execute('SELECT COUNT(*) as count FROM Products WHERE category_id = ?', (category_id,))
-            count = cursor.fetchone()['count']
+            # Znajdź lub utwórz kategorię "Bez kategorii"
+            cursor.execute('SELECT id FROM Categories WHERE name = ?', ('Bez kategorii',))
+            default_cat = cursor.fetchone()
             
-            if count > 0:
+            if not default_cat:
+                # Utwórz kategorię "Bez kategorii" jeśli nie istnieje
+                cursor.execute('INSERT INTO Categories (name, default_margin) VALUES (?, ?)', 
+                             ('Bez kategorii', 30.0))
+                default_cat_id = cursor.lastrowid
+            else:
+                default_cat_id = default_cat['id']
+            
+            # Nie pozwól usunąć kategorii "Bez kategorii"
+            cursor.execute('SELECT name FROM Categories WHERE id = ?', (category_id,))
+            cat_name = cursor.fetchone()
+            if cat_name and cat_name['name'] == 'Bez kategorii':
                 return False
+            
+            # Przepisz produkty do kategorii "Bez kategorii"
+            cursor.execute('UPDATE Products SET category_id = ? WHERE category_id = ?', 
+                         (default_cat_id, category_id))
             
             # Usuń kategorię
             cursor.execute('DELETE FROM Categories WHERE id = ?', (category_id,))

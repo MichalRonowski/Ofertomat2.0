@@ -160,7 +160,7 @@ class PDFGenerator:
             except Exception as e:
                 print(f"Błąd dodawania znaku wodnego: {e}")
     
-    def generate_offer_pdf(self, offer_data: Dict, output_path: str) -> bool:
+    def generate_offer_pdf(self, offer_data: Dict, output_path: str, progress_callback=None) -> bool:
         """
         Generuje PDF z ofertą
         
@@ -176,6 +176,7 @@ class PDFGenerator:
                     - margin: float (z kategorii)
                     - category_name: str
             output_path: Ścieżka do pliku wyjściowego PDF
+            progress_callback: Opcjonalna funkcja callback(current, total) dla progress bar
         
         Returns:
             bool - True jeśli sukces
@@ -262,8 +263,15 @@ class PDFGenerator:
             sorted_categories = sorted(items_by_category.items(), 
                                       key=lambda x: (get_category_order(x[0]), x[0]))
             
+            # Progress tracking dla dużych zbiorów
+            total_items = sum(len(items) for _, items in sorted_categories)
+            processed_items = 0
+            
+            if progress_callback:
+                progress_callback(0, total_items)
+            
             # Dla każdej kategorii
-            for category_name, items in sorted_categories:
+            for cat_idx, (category_name, items) in enumerate(sorted_categories):
                 # Nagłówek kategorii
                 elements.append(Paragraph(category_name, self.styles['CategoryHeader']))
                 
@@ -275,7 +283,7 @@ class PDFGenerator:
                 category_total_net = 0
                 category_total_gross = 0
                 
-                for item in items:
+                for item_idx, item in enumerate(items):
                     prices = self.calculate_price(
                         item['purchase_price_net'],
                         item.get('margin', item.get('default_margin', 30.0)),
@@ -296,6 +304,11 @@ class PDFGenerator:
                         f"{item['vat_rate']:.0f}%",
                         f"{prices['gross_unit']:.2f} zł"
                     ])
+                    
+                    # Aktualizuj progress co 50 produktów dla dużych zbiorów
+                    processed_items += 1
+                    if progress_callback and (processed_items % 50 == 0 or processed_items == total_items):
+                        progress_callback(processed_items, total_items)
                 
                 grand_total_net += category_total_net
                 grand_total_gross += category_total_gross
