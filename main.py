@@ -39,6 +39,7 @@ class App(ctk.CTk):
         self.selected_items = []
         self.search_var = ctk.StringVar()
         self.search_var.trace('w', self.on_search_change)
+        self.search_job = None  # Job ID dla debounce wyszukiwania
         
         # Paginacja
         self.current_page = 0
@@ -1002,7 +1003,17 @@ class App(ctk.CTk):
                 messagebox.showerror("Błąd", f"Wystąpił błąd:\n{str(e)}")
     
     def on_search_change(self, *args):
-        """Obsługuje zmianę tekstu w polu wyszukiwania - odświeża przez SQL"""
+        """Obsługuje zmianę tekstu w polu wyszukiwania z debounce (300ms)"""
+        # Anuluj poprzedni zaplanowany job
+        if self.search_job is not None:
+            self.after_cancel(self.search_job)
+        
+        # Zaplanuj nowe wyszukiwanie za 300ms
+        self.search_job = self.after(300, self.perform_search)
+    
+    def perform_search(self):
+        """Wykonuje właściwe wyszukiwanie - reset strony i aktualizacja"""
+        self.search_job = None
         # Reset do pierwszej strony i aktualizuj przez bazę danych
         self.current_page = 0
         self.update_pagination()
@@ -1033,6 +1044,7 @@ class App(ctk.CTk):
         offer_title_var = ctk.StringVar(value="Oferta handlowa")
         selected_offer_items = []  # Lista wybranych produktów do oferty
         category_order_list = []  # Kolejność kategorii
+        search_job_offer = [None]  # Job ID dla debounce wyszukiwania w generatorze ofert (lista dla nonlocal)
         
         # === GÓRNY PANEL: Tytuł i przyciski akcji ===
         top_frame = ctk.CTkFrame(creator, fg_color="gray20", height=80)
@@ -1246,9 +1258,9 @@ class App(ctk.CTk):
         main_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         # Konfiguracja grid dla 3 kolumn
-        main_frame.grid_columnconfigure(0, weight=1, minsize=300)  # Lewy: Kategorie
+        main_frame.grid_columnconfigure(0, weight=1, minsize=200)  # Lewy: Kategorie (zmniejszone z 300 do 200)
         main_frame.grid_columnconfigure(1, weight=2, minsize=500)  # Środek: Produkty
-        main_frame.grid_columnconfigure(2, weight=2, minsize=500)  # Prawy: Wybrane
+        main_frame.grid_columnconfigure(2, weight=2, minsize=600)  # Prawy: Wybrane (zwiększone z 500 do 600)
         main_frame.grid_rowconfigure(0, weight=1)
         
         # === LEWY PANEL: Lista kategorii ===
@@ -1303,65 +1315,79 @@ class App(ctk.CTk):
             text="📦 Bez kategorii",
             font=ctk.CTkFont(size=14, weight="bold")
         )
-        middle_title_label.pack(pady=(0, 15))
+        middle_title_label.pack(pady=(0, 5))
+        
+        # Pole wyszukiwania produktów
+        search_frame = ctk.CTkFrame(middle_panel, fg_color="transparent")
+        search_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        search_var = ctk.StringVar()
+        search_entry = ctk.CTkEntry(
+            search_frame,
+            placeholder_text="🔍 Szukaj produktu...",
+            textvariable=search_var,
+            height=35,
+            font=ctk.CTkFont(size=12)
+        )
+        search_entry.pack(fill="x")
         
         products_scroll = ctk.CTkScrollableFrame(middle_panel, fg_color="gray15")
         products_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 5))
         
-        def select_category(category):
-            """Wyświetla produkty wybranej kategorii z optymalizacją dla dużych zbiorów"""
-            selected_category_id[0] = category['id']
-            middle_title_label.configure(text=f"📦 {category['name']}")
-            
+        # Zmienna przechowująca wszystkie dostępne produkty z aktualnej kategorii
+        current_category_products = []
+        
+        def display_filtered_products(search_text=""):
+            """Wyświetla produkty przefiltrowane według tekstu wyszukiwania"""
             # Wyczyść poprzednie produkty
             for widget in products_scroll.winfo_children():
                 widget.destroy()
             
-            # Pobierz produkty
-            products = self.db.get_products(category['id'])
+            # Filtruj produkty według wyszukiwanego tekstu
+            search_lower = search_text.lower().strip()
+            if search_lower:
+                filtered_products = [
+                    p for p in current_category_products
+                    if search_lower in p['name'].lower() or 
+                       (p.get('code') and search_lower in p['code'].lower())
+                ]
+            else:
+                filtered_products = current_category_products
             
-            # Zbuduj set ID produktów już w ofercie dla szybkiego sprawdzania
-            offer_product_ids = set()
-            for item in selected_offer_items:
-                prod_id = item.get('id')
-                if prod_id is not None:
-                    offer_product_ids.add(prod_id)
-            
-            # Filtruj produkty - ukryj te, które już są w ofercie
-            available_products = [
-                p for p in products 
-                if p.get('id') not in offer_product_ids
-            ]
-            
-            if not available_products:
+            if not filtered_products:
+                msg = "Brak produktów pasujących do wyszukiwania" if search_lower else "Wszystkie produkty z tej kategorii\njuż są w ofercie"
                 ctk.CTkLabel(
                     products_scroll,
-                    text="Wszystkie produkty z tej kategorii\njuż są w ofercie" if products else "Brak produktów w tej kategorii",
+                    text=msg,
                     text_color="gray",
                     font=ctk.CTkFont(size=12)
                 ).pack(pady=20)
                 return
             
             # Przycisk "Dodaj wszystkie dostępne produkty"
+            btn_text = f"➕ Dodaj wszystkie produkty ({len(filtered_products)})"
+            if search_lower:
+                btn_text = f"➕ Dodaj znalezione produkty ({len(filtered_products)})"
+            
             add_all_btn = ctk.CTkButton(
                 products_scroll,
-                text=f"➕ Dodaj wszystkie produkty ({len(available_products)})",
+                text=btn_text,
                 height=45,
                 font=ctk.CTkFont(size=13, weight="bold"),
                 fg_color="#C8102E",
                 hover_color="#B00D24",
-                command=lambda: add_all_products_from_category(available_products)
+                command=lambda: add_all_products_from_category(filtered_products)
             )
             add_all_btn.pack(fill="x", pady=10, padx=5)
             
             # OPTYMALIZACJA: Limit widgetów dla dużych kategorii
             MAX_DISPLAY = 200  # Maksymalnie 200 produktów do wyświetlenia
-            display_count = min(len(available_products), MAX_DISPLAY)
+            display_count = min(len(filtered_products), MAX_DISPLAY)
             
-            if len(available_products) > MAX_DISPLAY:
+            if len(filtered_products) > MAX_DISPLAY:
                 warning_label = ctk.CTkLabel(
                     products_scroll,
-                    text=f"⚠️ Wyświetlono {MAX_DISPLAY} z {len(available_products)} produktów.\nUżyj przycisku 'Dodaj wszystkie' lub wyszukaj w głównym widoku.",
+                    text=f"⚠️ Wyświetlono {MAX_DISPLAY} z {len(filtered_products)} produktów.\nUżyj wyszukiwania aby zawęzić wyniki lub przycisku 'Dodaj wszystkie'.",
                     text_color="orange",
                     font=ctk.CTkFont(size=10),
                     wraplength=450
@@ -1369,7 +1395,7 @@ class App(ctk.CTk):
                 warning_label.pack(fill="x", pady=5, padx=5)
             
             # Lista produktów (tylko pierwsze MAX_DISPLAY) - kompaktowy widok
-            for product in available_products[:display_count]:
+            for product in filtered_products[:display_count]:
                 product_frame = ctk.CTkFrame(products_scroll, fg_color="gray25", height=30)
                 product_frame.pack(fill="x", pady=1, padx=5)
                 
@@ -1405,6 +1431,53 @@ class App(ctk.CTk):
                     command=lambda p=product: add_product_to_offer(p)
                 )
                 add_btn.pack(side="right", padx=3, pady=3)
+        
+        def perform_search_offer():
+            """Wykonuje właściwe wyszukiwanie produktów w ofercie"""
+            search_job_offer[0] = None
+            display_filtered_products(search_var.get())
+        
+        def on_search_change(*args):
+            """Callback wywoływany przy zmianie tekstu wyszukiwania z debounce (300ms)"""
+            # Anuluj poprzedni zaplanowany job
+            if search_job_offer[0] is not None:
+                creator.after_cancel(search_job_offer[0])
+            
+            # Zaplanuj nowe wyszukiwanie za 300ms
+            search_job_offer[0] = creator.after(300, perform_search_offer)
+        
+        # Podłącz callback do pola wyszukiwania
+        search_var.trace_add('write', on_search_change)
+        
+        def select_category(category, keep_search=False):
+            """Wyświetla produkty wybranej kategorii z optymalizacją dla dużych zbiorów"""
+            nonlocal current_category_products
+            
+            selected_category_id[0] = category['id']
+            middle_title_label.configure(text=f"📦 {category['name']}")
+            
+            # Wyczyść pole wyszukiwania tylko jeśli to nowa kategoria
+            if not keep_search:
+                search_var.set("")
+            
+            # Pobierz produkty
+            products = self.db.get_products(category['id'])
+            
+            # Zbuduj set ID produktów już w ofercie dla szybkiego sprawdzania
+            offer_product_ids = set()
+            for item in selected_offer_items:
+                prod_id = item.get('id')
+                if prod_id is not None:
+                    offer_product_ids.add(prod_id)
+            
+            # Filtruj produkty - ukryj te, które już są w ofercie
+            current_category_products = [
+                p for p in products 
+                if p.get('id') not in offer_product_ids
+            ]
+            
+            # Wyświetl produkty z aktualnym filtrem wyszukiwania
+            display_filtered_products(search_var.get())
         
         def add_all_products_from_category(products):
             """Dodaje wszystkie produkty z kategorii do oferty z progress bar"""
@@ -1475,12 +1548,12 @@ class App(ctk.CTk):
                     refresh_offer_items()
                     progress_dialog.destroy()
                     
-                    # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty)
+                    # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty), zachowaj wyszukiwanie
                     if selected_category_id[0] is not None:
                         categories = self.db.get_categories()
                         for cat in categories:
                             if cat['id'] == selected_category_id[0]:
-                                select_category(cat)
+                                select_category(cat, keep_search=True)
                                 break
                     
                     # Pokaż komunikat zbiorczy
@@ -1523,12 +1596,12 @@ class App(ctk.CTk):
                 # Dla małych zbiorów - standardowe odświeżanie
                 refresh_offer_items()
                 
-                # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty)
+                # Odśwież listę produktów w środkowej sekcji (ukryj dodane produkty), zachowaj wyszukiwanie
                 if selected_category_id[0] is not None:
                     categories = self.db.get_categories()
                     for cat in categories:
                         if cat['id'] == selected_category_id[0]:
-                            select_category(cat)
+                            select_category(cat, keep_search=True)
                             break
                 
                 # Pokaż komunikat
@@ -1696,12 +1769,12 @@ class App(ctk.CTk):
                 # Odśwież widok
                 refresh_offer_items()
                 
-                # Odśwież listę produktów w środkowej sekcji (pokaż usunięte produkty)
+                # Odśwież listę produktów w środkowej sekcji (pokaż usunięte produkty), zachowaj wyszukiwanie
                 if selected_category_id[0] is not None:
                     categories = self.db.get_categories()
                     for cat in categories:
                         if cat['id'] == selected_category_id[0]:
-                            select_category(cat)
+                            select_category(cat, keep_search=True)
                             break
                 
                 messagebox.showinfo("Sukces", f"Usunięto {count} produktów z oferty!")
@@ -1739,13 +1812,13 @@ class App(ctk.CTk):
             
             refresh_offer_items()
             
-            # Odśwież listę produktów w środkowej sekcji (ukryj dodany produkt)
+            # Odśwież listę produktów w środkowej sekcji (ukryj dodany produkt), zachowaj wyszukiwanie
             if selected_category_id[0] is not None:
                 # Znajdź kategorię i odśwież
                 categories = self.db.get_categories()
                 for cat in categories:
                     if cat['id'] == selected_category_id[0]:
-                        select_category(cat)
+                        select_category(cat, keep_search=True)
                         break
         
         def remove_product_from_offer(product):
@@ -1753,13 +1826,13 @@ class App(ctk.CTk):
             selected_offer_items.remove(product)
             refresh_offer_items()
             
-            # Odśwież listę produktów w środkowej sekcji (pokaż usunięty produkt)
+            # Odśwież listę produktów w środkowej sekcji (pokaż usunięty produkt), zachowaj wyszukiwanie
             if selected_category_id[0] is not None:
                 # Znajdź kategorię i odśwież
                 categories = self.db.get_categories()
                 for cat in categories:
                     if cat['id'] == selected_category_id[0]:
-                        select_category(cat)
+                        select_category(cat, keep_search=True)
                         break
         
         def refresh_offer_items():
